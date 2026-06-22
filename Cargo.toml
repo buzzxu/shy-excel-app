@@ -10,6 +10,6 @@ edition = "2021"
 license = "UNLICENSED"
 
 [workspace.dependencies]
-arrow = "53"
+arrow = { version = "53", features = ["ipc_compression"] }
 rust_xlsxwriter = "0.95"
 ureq = "2"
