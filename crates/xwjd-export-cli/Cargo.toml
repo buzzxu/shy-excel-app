@@ -1,0 +1,21 @@
+[package]
+name = "xwjd-export-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "导出客户端 headless 核心：HTTPS 拉 Arrow 流 → 生成 xlsx（Tauri 命令复用本逻辑）"
+
+[lib]
+name = "xwjd_export_cli"
+path = "src/lib.rs"
+
+[[bin]]
+name = "xwjd-export-cli"
+path = "src/main.rs"
+
+[dependencies]
+xwjd-xlsx-core = { path = "../xwjd-xlsx-core" }
+ureq = { workspace = true }
+
+[dev-dependencies]
+arrow = { workspace = true }
