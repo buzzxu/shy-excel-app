@@ -41,7 +41,10 @@ master:
             set -e
             apt-get update -qq
             # llvm 提供 llvm-lib/llvm-rc/llvm-dlltool（cc-rs 交叉编译 C 依赖必需）；lld 提供 lld-link
-            apt-get install -y -qq --no-install-recommends clang llvm lld nsis zip ca-certificates
+            # libayatana-appindicator3-dev + pkg-config：tauri-cli 的 tray-icon 特性在打包时会做宿主侧
+            #   appindicator 检测（即便目标是 Windows），缺则 panic "Can't detect any appindicator library"
+            apt-get install -y -qq --no-install-recommends \
+              clang llvm lld nsis zip ca-certificates pkg-config libayatana-appindicator3-dev
             # 把 /usr/lib/llvm-*/bin 的 unversioned 工具链到 /usr/local/bin（在 PATH，跨 stage 持久）
             LLVMBIN=$(ls -d /usr/lib/llvm-*/bin 2>/dev/null | sort -V | tail -1)
             echo "LLVMBIN=$LLVMBIN"
