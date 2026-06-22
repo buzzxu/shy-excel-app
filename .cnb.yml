@@ -45,8 +45,10 @@ master:
             # 把 /usr/lib/llvm-*/bin 的 unversioned 工具链到 /usr/local/bin（在 PATH，跨 stage 持久）
             LLVMBIN=$(ls -d /usr/lib/llvm-*/bin 2>/dev/null | sort -V | tail -1)
             echo "LLVMBIN=$LLVMBIN"
-            for t in clang-cl llvm-lib llvm-rc llvm-dlltool llvm-ar lld-link; do
-              [ -e "$LLVMBIN/$t" ] && ln -sf "$LLVMBIN/$t" /usr/local/bin/$t || echo "缺 $t"
+            # clang-cl = clang 的 MSVC 模式（同一二进制按 argv0 切换）；Debian 不带该名，从 clang 显式建链
+            ln -sf "$(command -v clang)" /usr/local/bin/clang-cl
+            for t in llvm-lib llvm-rc llvm-dlltool llvm-ar lld-link; do
+              if [ -e "$LLVMBIN/$t" ]; then ln -sf "$LLVMBIN/$t" /usr/local/bin/$t; else echo "缺 $t"; fi
             done
             command -v clang-cl llvm-lib llvm-rc lld-link
             rustup target add x86_64-pc-windows-msvc
