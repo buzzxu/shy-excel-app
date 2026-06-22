@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>雪王高速导出</title>
+  <style>
+    :root { --brand: #e6001e; }
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; margin: 0; color: #222; background: #f6f7f9; }
+    header { background: var(--brand); color: #fff; padding: 14px 18px; font-weight: 600; }
+    main { padding: 16px 18px; }
+    .settings { background: #fff; border-radius: 8px; padding: 14px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+    .settings label { display: inline-block; min-width: 96px; color: #555; }
+    .row { margin: 8px 0; display: flex; align-items: center; gap: 8px; }
+    input { padding: 6px 8px; border: 1px solid #ccc; border-radius: 6px; }
+    input#dir { width: 360px; }
+    button { background: var(--brand); color: #fff; border: 0; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+    button.ghost { background: #eee; color: #333; }
+    .tasks { background: #fff; border-radius: 8px; padding: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+    .task { border-bottom: 1px solid #eee; padding: 10px; }
+    .task:last-child { border-bottom: 0; }
+    .task .meta { font-size: 12px; color: #888; }
+    .st-running { color: #c70; } .st-done { color: #2a7; } .st-error { color: var(--brand); }
+    .empty { color: #aaa; padding: 18px; text-align: center; }
+  </style>
+</head>
+<body>
+  <header>雪王高速导出客户端</header>
+  <main>
+    <div class="settings">
+      <div class="row"><label>导出目录</label><input id="dir" type="text" placeholder="选择导出目录" readonly /><button id="pick" class="ghost">选择…</button></div>
+      <div class="row"><label>每文件订单数</label><input id="chunk" type="number" value="70000" min="1000" step="10000" /><span class="meta" id="memhint"></span></div>
+    </div>
+    <div class="tasks" id="tasks"><div class="empty">等待浏览器发起导出（点击页面「客户端高速导出」）…</div></div>
+  </main>
+  <script src="main.js"></script>
+</body>
+</html>
