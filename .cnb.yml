@@ -1,24 +1,29 @@
-# xwjd-export-client CI（cnb.cool）—— 编译 + NSIS 安装包 + 上传 cnb 附件
+# xwjd-export-client CI（cnb.cool）—— 打 tag 出正式 Release（NSIS 安装包）
 # ----------------------------------------------------------------------------
+# 触发：推送 v* 版本 tag（如 v0.1.0）。日常 master push 不打包，避免浪费算力。
+#   → 解决「推送后跳过打包 / commit 附件难找且 30 天过期」：产物改发到仓库 Releases 页（永久、好找）。
+#
 # 目标用户为后台 Windows 端 → 在 cnb 的 Linux 容器中用 cargo-xwin **交叉编译 Windows x64**，
 # 并由 tauri-cli 打 **NSIS 安装包**（.exe 安装程序，Linux 可跨平台打包，不同于 WiX/MSI）。
 # 安装包默认 webviewInstallMode=downloadBootstrapper，安装时自动检测并安装 WebView2 运行时。
 # 前端为静态 ui/（tauri generate_context 编译期内嵌，无需 node 构建）。
-# 产物：NSIS 安装程序 *-setup.exe，经 cnbcool/attachments 上传为本次 commit 的 cnb 附件。
 #
-# 触发：master push 且改动构建相关文件（ifModify）。
+# 发布：git:release 内置步骤创建/更新该 tag 的 Release，cnbcool/attachments 上传安装包资产。
 #
-# ✅ 已在 cnb 实测跑通：产出 xwjd-export-client-setup-x64.exe(~3.6MB) 并上传 commit 附件。
+# ✅ 编译链路已在 cnb 实测跑通（commit 033d8bb 产出 setup.exe ~3.6MB）；本文件仅把
+#    「触发器 + 末段产物落点」从 master-push/commit 附件 改为 tag/Release，编译阶段原样保留。
 # 关键依赖（实测得出，缺一不可）：
 #   1) llvm —— 交叉编译 ring(rustls/ureq) 与 zstd-sys(arrow) 的 C 代码需 llvm-lib/llvm-rc/lld-link；
 #   2) clang-cl —— Debian 不带该名，从 clang 显式建链（clang 的 MSVC 模式）；
 #   3) libayatana-appindicator3-dev + pkg-config —— tauri tray-icon 特性打包时宿主侧检测必需。
 # macOS 端需 macOS runner（容器不支持），不在此 pipeline。
+#
+# 用法：git tag v0.1.0 && git push origin v0.1.0  → cnb 自动构建并发布到 Releases 页。
 # ----------------------------------------------------------------------------
 
-master:
-  push:
-    - name: build-nsis-and-upload
+"v*":
+  tag_push:
+    - name: build-nsis-and-release
       runner:
         cpus: 8
       docker:
@@ -28,13 +33,6 @@ master:
           - /root/.cache/cargo-xwin:copy-on-write
           - /root/.cache/tauri:copy-on-write
           - target:copy-on-write
-      ifModify:
-        - "src-tauri/**"
-        - "crates/**"
-        - "ui/**"
-        - "Cargo.toml"
-        - "Cargo.lock"
-        - ".cnb.yml"
       env:
         XWIN_CACHE_DIR: /root/.cache/cargo-xwin
       stages:
@@ -76,13 +74,19 @@ master:
             SETUP=$(find . -path "*/release/bundle/nsis/*-setup.exe" | head -1)
             if [ -z "$SETUP" ]; then echo "❌ 未找到 NSIS 安装包"; find . -name "*-setup.exe"; exit 1; fi
             mkdir -p out
+            # 稳定资产名（版本由 Release 的 tag 体现），便于固定下载链接
             cp "$SETUP" "out/xwjd-export-client-setup-x64.exe"
             ls -lh out/
 
-        - name: 上传到 cnb 附件
+        - name: 创建 Release
+          type: git:release
+          options:
+            title: xwjd-export-client ${CNB_BRANCH}
+            latest: true
+
+        - name: 上传安装包到 Release
           image: cnbcool/attachments:latest
           settings:
             attachments:
               - "./out/xwjd-export-client-setup-x64.exe"
             commit: ${CNB_COMMIT}
-            ttl: 30
