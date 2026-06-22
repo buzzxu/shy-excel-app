@@ -1,15 +1,17 @@
 # xwjd-export-client CI（cnb.cool）—— 编译 + NSIS 安装包 + 上传 cnb 附件
 # ----------------------------------------------------------------------------
 # 目标用户为后台 Windows 端 → 在 cnb 的 Linux 容器中用 cargo-xwin **交叉编译 Windows x64**，
-# 并由 tauri-cli 打 **NSIS 安装包**（.exe 安装程序）。NSIS 可在 Linux 跨平台打包（不同于 WiX/MSI）。
+# 并由 tauri-cli 打 **NSIS 安装包**（.exe 安装程序，Linux 可跨平台打包，不同于 WiX/MSI）。
 # 安装包默认 webviewInstallMode=downloadBootstrapper，安装时自动检测并安装 WebView2 运行时。
 # 前端为静态 ui/（tauri generate_context 编译期内嵌，无需 node 构建）。
 # 产物：NSIS 安装程序 *-setup.exe，经 cnbcool/attachments 上传为本次 commit 的 cnb 附件。
 #
-# 触发：master push 且改动构建相关文件（ifModify）。发版到 release 附件可另加 `$: tag_push:`。
+# 触发：master push 且改动构建相关文件（ifModify）。
 #
-# ⚠ 首次需在 cnb 上验证/调试：cargo-xwin 下载 Win SDK、zstd-sys(C) 交叉编译、tauri-cli 下载
-#   NSIS 工具/插件、资源图标嵌入等在本机无法验证。macOS 端需 macOS runner（容器不支持），不在此 pipeline。
+# 关键依赖（cnb 首跑实测得出）：
+#   交叉编译 ring(rustls/ureq) 与 zstd-sys(arrow) 的 C 代码需 LLVM 的 llvm-lib/llvm-rc/lld-link，
+#   故必须 apt 装 **llvm**（不只是 clang/lld），并把 /usr/lib/llvm-*/bin 的 unversioned 工具加入 PATH。
+# macOS 端需 macOS runner（容器不支持），不在此 pipeline。
 # ----------------------------------------------------------------------------
 
 master:
@@ -34,11 +36,19 @@ master:
       env:
         XWIN_CACHE_DIR: /root/.cache/cargo-xwin
       stages:
-        - name: 安装工具链（cargo-xwin + tauri-cli + nsis）
+        - name: 安装工具链（llvm + cargo-xwin + tauri-cli + nsis）
           script: |
             set -e
             apt-get update -qq
-            apt-get install -y -qq --no-install-recommends clang lld nsis zip ca-certificates
+            # llvm 提供 llvm-lib/llvm-rc/llvm-dlltool（cc-rs 交叉编译 C 依赖必需）；lld 提供 lld-link
+            apt-get install -y -qq --no-install-recommends clang llvm lld nsis zip ca-certificates
+            # 把 /usr/lib/llvm-*/bin 的 unversioned 工具链到 /usr/local/bin（在 PATH，跨 stage 持久）
+            LLVMBIN=$(ls -d /usr/lib/llvm-*/bin 2>/dev/null | sort -V | tail -1)
+            echo "LLVMBIN=$LLVMBIN"
+            for t in clang-cl llvm-lib llvm-rc llvm-dlltool llvm-ar lld-link; do
+              [ -e "$LLVMBIN/$t" ] && ln -sf "$LLVMBIN/$t" /usr/local/bin/$t || echo "缺 $t"
+            done
+            command -v clang-cl llvm-lib llvm-rc lld-link
             rustup target add x86_64-pc-windows-msvc
             command -v cargo-xwin >/dev/null 2>&1 || cargo install --locked cargo-xwin
             command -v cargo-tauri >/dev/null 2>&1 || cargo install --locked tauri-cli --version "^2"
@@ -47,10 +57,11 @@ master:
         - name: 交叉编译并打 NSIS 安装包
           script: |
             set -e
-            # ureq 默认 rustls（无需 openssl 交叉编译）；arrow ipc_compression 的 zstd-sys(C) 由 cargo-xwin 编译
+            export PATH="$(ls -d /usr/lib/llvm-*/bin | sort -V | tail -1):$PATH"
+            # ureq→rustls→ring(C) 与 arrow ipc_compression→zstd-sys(C) 均由 cargo-xwin + llvm 工具交叉编译
             cargo tauri build --runner cargo-xwin --target x86_64-pc-windows-msvc --bundles nsis
-            echo "== NSIS 产物 ==" && ls -lh src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/ || \
-              ls -lh target/x86_64-pc-windows-msvc/release/bundle/nsis/
+            echo "== NSIS 产物 ==" && (ls -lh target/x86_64-pc-windows-msvc/release/bundle/nsis/ 2>/dev/null || \
+              ls -lh src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/)
 
         - name: 收集安装包
           script: |
