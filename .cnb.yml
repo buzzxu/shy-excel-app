@@ -8,9 +8,11 @@
 #
 # 触发：master push 且改动构建相关文件（ifModify）。
 #
-# 关键依赖（cnb 首跑实测得出）：
-#   交叉编译 ring(rustls/ureq) 与 zstd-sys(arrow) 的 C 代码需 LLVM 的 llvm-lib/llvm-rc/lld-link，
-#   故必须 apt 装 **llvm**（不只是 clang/lld），并把 /usr/lib/llvm-*/bin 的 unversioned 工具加入 PATH。
+# ✅ 已在 cnb 实测跑通：产出 xwjd-export-client-setup-x64.exe(~3.6MB) 并上传 commit 附件。
+# 关键依赖（实测得出，缺一不可）：
+#   1) llvm —— 交叉编译 ring(rustls/ureq) 与 zstd-sys(arrow) 的 C 代码需 llvm-lib/llvm-rc/lld-link；
+#   2) clang-cl —— Debian 不带该名，从 clang 显式建链（clang 的 MSVC 模式）；
+#   3) libayatana-appindicator3-dev + pkg-config —— tauri tray-icon 特性打包时宿主侧检测必需。
 # macOS 端需 macOS runner（容器不支持），不在此 pipeline。
 # ----------------------------------------------------------------------------
 
