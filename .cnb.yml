@@ -89,7 +89,8 @@
 
         - name: 上传安装包为 Release 资产（cnb OpenAPI 三步式）
           script: |
-            set -euo pipefail
+            # 注意：cnb 的 script 由 sh(dash) 执行，不能用 bash 专有的 `set -o pipefail`
+            set -e
             FN=xwjd-export-client-setup-x64.exe
             API=https://api.cnb.cool
             SIZE=$(wc -c < "out/$FN" | tr -d ' ')
@@ -97,6 +98,7 @@
             # 上一 stage 的 git:release 已为本 tag 创建 Release，取其 id
             RID=$(curl -fsS -H "$AUTH" -H "Accept: application/json" \
               "$API/$CNB_REPO_SLUG/-/releases/tags/$CNB_BRANCH" | jq -r '.id')
+            [ -n "$RID" ] && [ "$RID" != "null" ] || { echo "❌ 取 release_id 失败"; exit 1; }
             echo "release_id=$RID size=$SIZE"
             # 1) 申请上传地址（必须 Accept: application/vnd.cnb.api+json，否则 406）
             RESP=$(curl -fsS -X POST -H "$AUTH" \
