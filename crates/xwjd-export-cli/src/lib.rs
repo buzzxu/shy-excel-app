@@ -3,6 +3,7 @@
 //! Tauri 命令在工作线程调用 [`download_and_generate`]，并可传入进度回调。
 
 use std::io::BufReader;
+use std::path::Path;
 
 pub use xwjd_xlsx_core::{GenConfig, GenResult};
 
@@ -11,5 +12,11 @@ pub use xwjd_xlsx_core::{GenConfig, GenResult};
 pub fn download_and_generate(url: &str, cfg: &GenConfig) -> Result<GenResult, Box<dyn std::error::Error>> {
     let resp = ureq::get(url).call()?;
     let reader = BufReader::new(resp.into_reader());
+    Ok(xwjd_xlsx_core::generate_from_arrow(reader, cfg)?)
+}
+
+/// 从本地 Arrow IPC 文件生成（联调/离线：消费 Java 端 ArrowExportWriter 产物，验证跨语言互通）。
+pub fn generate_local(path: &Path, cfg: &GenConfig) -> Result<GenResult, Box<dyn std::error::Error>> {
+    let reader = BufReader::new(std::fs::File::open(path)?);
     Ok(xwjd_xlsx_core::generate_from_arrow(reader, cfg)?)
 }
