@@ -1,0 +1,14 @@
+# xwjd-export-client — 专用高速导出客户端（Tauri/Rust），REQ-2026-06-21-001
+# workspace：xwjd-xlsx-core(生成核心库) + 后续 src-tauri(GUI 壳，M-D2)
+[workspace]
+members = ["crates/xwjd-xlsx-core"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "UNLICENSED"
+
+[workspace.dependencies]
+arrow = "53"
+rust_xlsxwriter = "0.95"

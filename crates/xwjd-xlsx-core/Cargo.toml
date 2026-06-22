@@ -1,0 +1,13 @@
+[package]
+name = "xwjd-xlsx-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Arrow IPC -> 多层合并 xlsx 生成核心（自描述 schema 驱动、多文件分块）"
+
+[dependencies]
+arrow = { workspace = true }
+rust_xlsxwriter = { workspace = true }
+
+[dev-dependencies]
+zip = "2"
