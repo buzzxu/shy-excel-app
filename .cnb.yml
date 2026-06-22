@@ -1,0 +1,74 @@
+# xwjd-export-client CI（cnb.cool）—— 编译 + 打包 + 上传 cnb 附件
+# ----------------------------------------------------------------------------
+# 目标用户为后台 Windows 端 → 在 cnb 的 Linux 容器中用 cargo-xwin **交叉编译 Windows .exe**。
+# 前端为静态 ui/（已由 tauri generate_context 编译期内嵌，无需 node 构建）。
+# 产物：可执行 .exe（便携版，依赖系统 WebView2 运行时；Win10 21H2+/Win11 内置）打包 zip，
+#       通过 cnbcool/attachments 上传为本次 commit 的 cnb 附件。
+#
+# 触发：master push 且改动了构建相关文件（ifModify）。如需发版到 release 附件，
+#       可另加 `$: tag_push:` 触发并把 attachments 的 commit 改为 tag。
+#
+# ⚠ 首次需在 cnb 上验证/调试：交叉编译 Tauri(Windows) 的 zstd-sys(C) / 资源图标(icon.ico) /
+#   cargo-xwin 下载 Windows SDK 等环节在本地无法验证。macOS 端需 macOS runner（容器不支持），不在此 pipeline。
+# ----------------------------------------------------------------------------
+
+master:
+  push:
+    - name: build-windows-and-upload
+      runner:
+        cpus: 8
+      docker:
+        image: rust:1-bookworm
+        volumes:
+          - /usr/local/cargo/registry:copy-on-write
+          - /root/.cache/cargo-xwin:copy-on-write
+          - target:copy-on-write
+      ifModify:
+        - "src-tauri/**"
+        - "crates/**"
+        - "ui/**"
+        - "Cargo.toml"
+        - "Cargo.lock"
+        - ".cnb.yml"
+      env:
+        XWIN_CACHE_DIR: /root/.cache/cargo-xwin
+      stages:
+        - name: 安装交叉编译工具链
+          script: |
+            set -e
+            apt-get update -qq
+            apt-get install -y -qq --no-install-recommends clang lld zip ca-certificates
+            rustup target add x86_64-pc-windows-msvc
+            command -v cargo-xwin >/dev/null 2>&1 || cargo install --locked cargo-xwin
+            rustc --version && cargo-xwin --version
+
+        - name: 交叉编译 Windows x64（.exe，内嵌前端）
+          script: |
+            set -e
+            # ureq 默认 rustls（纯 Rust，无需 openssl 交叉编译）；arrow ipc_compression 的 zstd-sys(C) 由 cargo-xwin 编译
+            cargo xwin build --release --target x86_64-pc-windows-msvc -p xwjd-export-app
+            ls -lh target/x86_64-pc-windows-msvc/release/xwjd-export-app.exe
+
+        - name: 打包 zip
+          script: |
+            set -e
+            mkdir -p out
+            cp target/x86_64-pc-windows-msvc/release/xwjd-export-app.exe "out/xwjd-export-client.exe"
+            # 便携说明
+            cat > out/README.txt <<'TXT'
+            雪王高速导出客户端（便携版，Windows x64）
+            - 双击 xwjd-export-client.exe 运行；首次运行后常驻系统托盘。
+            - 需要系统已安装 Microsoft Edge WebView2 运行时（Win10 21H2+/Win11 内置；
+              旧系统请安装 Evergreen Bootstrapper）。
+            - 浏览器后台点击「客户端高速导出」即可经 xwjdexport:// 协议唤起本客户端。
+            TXT
+            cd out && zip -r ../xwjd-export-client-windows-x64.zip . && cd ..
+            ls -lh xwjd-export-client-windows-x64.zip
+
+        - name: 上传到 cnb 附件
+          image: cnbcool/attachments:latest
+          settings:
+            attachments:
+              - "./xwjd-export-client-windows-x64.zip"
+            commit: ${CNB_COMMIT}
+            ttl: 30
