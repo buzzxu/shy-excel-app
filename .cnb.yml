@@ -8,14 +8,17 @@
 # 安装包默认 webviewInstallMode=downloadBootstrapper，安装时自动检测并安装 WebView2 运行时。
 # 前端为静态 ui/（tauri generate_context 编译期内嵌，无需 node 构建）。
 #
-# 发布：git:release 内置步骤创建/更新该 tag 的 Release，cnbcool/attachments 上传安装包资产。
+# 发布：git:release 内置步骤创建该 tag 的 Release，再用 cnb OpenAPI 三步式把安装包传为
+#       **Release 资产**（呈现在 Releases 页）。注意：cnbcool/attachments 只挂到 commit，
+#       不会出现在 Release 页（实测 assets=0），故改用 OpenAPI release asset 接口。
 #
-# ✅ 编译链路已在 cnb 实测跑通（commit 033d8bb 产出 setup.exe ~3.6MB）；本文件仅把
+# ✅ 编译链路已在 cnb 实测跑通（commit 033d8bb 产出 setup.exe ~3.6MB）；本文件把
 #    「触发器 + 末段产物落点」从 master-push/commit 附件 改为 tag/Release，编译阶段原样保留。
 # 关键依赖（实测得出，缺一不可）：
 #   1) llvm —— 交叉编译 ring(rustls/ureq) 与 zstd-sys(arrow) 的 C 代码需 llvm-lib/llvm-rc/lld-link；
 #   2) clang-cl —— Debian 不带该名，从 clang 显式建链（clang 的 MSVC 模式）；
-#   3) libayatana-appindicator3-dev + pkg-config —— tauri tray-icon 特性打包时宿主侧检测必需。
+#   3) libayatana-appindicator3-dev + pkg-config —— tauri tray-icon 特性打包时宿主侧检测必需；
+#   4) curl + jq —— 末段调 cnb OpenAPI 上传 Release 资产用。
 # macOS 端需 macOS runner（容器不支持），不在此 pipeline。
 #
 # 用法：git tag v0.1.0 && git push origin v0.1.0  → cnb 自动构建并发布到 Releases 页。
@@ -44,7 +47,7 @@
             # libayatana-appindicator3-dev + pkg-config：tauri-cli 的 tray-icon 特性在打包时会做宿主侧
             #   appindicator 检测（即便目标是 Windows），缺则 panic "Can't detect any appindicator library"
             apt-get install -y -qq --no-install-recommends \
-              clang llvm lld nsis zip ca-certificates pkg-config libayatana-appindicator3-dev
+              clang llvm lld nsis zip ca-certificates pkg-config libayatana-appindicator3-dev curl jq
             # 把 /usr/lib/llvm-*/bin 的 unversioned 工具链到 /usr/local/bin（在 PATH，跨 stage 持久）
             LLVMBIN=$(ls -d /usr/lib/llvm-*/bin 2>/dev/null | sort -V | tail -1)
             echo "LLVMBIN=$LLVMBIN"
@@ -84,9 +87,30 @@
             title: xwjd-export-client ${CNB_BRANCH}
             latest: true
 
-        - name: 上传安装包到 Release
-          image: cnbcool/attachments:latest
-          settings:
-            attachments:
-              - "./out/xwjd-export-client-setup-x64.exe"
-            commit: ${CNB_COMMIT}
+        - name: 上传安装包为 Release 资产（cnb OpenAPI 三步式）
+          script: |
+            set -euo pipefail
+            FN=xwjd-export-client-setup-x64.exe
+            API=https://api.cnb.cool
+            SIZE=$(wc -c < "out/$FN" | tr -d ' ')
+            AUTH="Authorization: Bearer $CNB_TOKEN"
+            # 上一 stage 的 git:release 已为本 tag 创建 Release，取其 id
+            RID=$(curl -fsS -H "$AUTH" -H "Accept: application/json" \
+              "$API/$CNB_REPO_SLUG/-/releases/tags/$CNB_BRANCH" | jq -r '.id')
+            echo "release_id=$RID size=$SIZE"
+            # 1) 申请上传地址（必须 Accept: application/vnd.cnb.api+json，否则 406）
+            RESP=$(curl -fsS -X POST -H "$AUTH" \
+              -H "Content-Type: application/json" -H "Accept: application/vnd.cnb.api+json" \
+              "$API/$CNB_REPO_SLUG/-/releases/$RID/asset-upload-url" \
+              -d "{\"asset_name\":\"$FN\",\"size\":$SIZE,\"overwrite\":true}")
+            UPURL=$(echo "$RESP" | jq -r '.upload_url')
+            VERIFY=$(echo "$RESP" | jq -r '.verify_url')
+            # 2) PUT 文件到对象存储
+            curl -fsS -X PUT -H "Content-Type: application/octet-stream" \
+              --data-binary "@out/$FN" "$UPURL" >/dev/null
+            # 3) 确认：必须 --path-as-is 保留 verify_url 里编码的 %2F 资产路径段，否则 token 校验失败
+            curl -fsS --path-as-is -X POST -H "$AUTH" \
+              -H "Accept: application/vnd.cnb.api+json" "$VERIFY" >/dev/null
+            # 校验资产已挂到 Release
+            echo "== Release 资产 ==" && curl -fsS -H "$AUTH" -H "Accept: application/json" \
+              "$API/$CNB_REPO_SLUG/-/releases/$RID" | jq -r '.assets[] | "  · \(.name) \(.size) bytes  \(.browser_download_url)"'
