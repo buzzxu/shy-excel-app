@@ -12,8 +12,8 @@
 #       **Release 资产**（呈现在 Releases 页）。注意：cnbcool/attachments 只挂到 commit，
 #       不会出现在 Release 页（实测 assets=0），故改用 OpenAPI release asset 接口。
 #
-# ✅ 编译链路已在 cnb 实测跑通（commit 033d8bb 产出 setup.exe ~3.6MB）；本文件把
-#    「触发器 + 末段产物落点」从 master-push/commit 附件 改为 tag/Release，编译阶段原样保留。
+# ✅ 全链路已在 cnb 实测跑通：tag v0.1.0 → 构建 cnb-r9g → Releases 页自动挂 setup.exe(3.71MB)。
+#    （编译链路另在 033d8bb 已验；本文件把触发器+产物落点从 master-push/commit 附件 改为 tag/Release。）
 # 关键依赖（实测得出，缺一不可）：
 #   1) llvm —— 交叉编译 ring(rustls/ureq) 与 zstd-sys(arrow) 的 C 代码需 llvm-lib/llvm-rc/lld-link；
 #   2) clang-cl —— Debian 不带该名，从 clang 显式建链（clang 的 MSVC 模式）；
