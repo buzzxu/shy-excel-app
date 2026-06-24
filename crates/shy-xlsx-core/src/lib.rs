@@ -1,4 +1,4 @@
-//! xwjd-xlsx-core — Arrow IPC 流 → 多层合并 xlsx 生成核心（REQ-2026-06-21-001 M-D1）。
+//! shy-xlsx-core — Arrow IPC 流 → 多层合并 xlsx 生成核心（REQ-2026-06-21-001 M-D1）。
 //!
 //! 自描述：从 Arrow schema 的 field metadata 读取列定义（title/merge/level/width）与 N 个 `__gid` 层级列，
 //! **客户端无需硬编码任何业务列**（"客户端永不随新导出改动"）。

@@ -162,7 +162,7 @@ function createTask(job) {
 }
 
 function parseDeepLink(url) {
-  // swiftexport://export?job=..&token=..&url=完整流地址（含鉴权参数，仅内部使用，绝不展示）
+  // shyexport://export?job=..&token=..&url=完整流地址（含鉴权参数，仅内部使用，绝不展示）
   const q = new URLSearchParams(url.split("?")[1] || "");
   const job = q.get("job");
   let streamUrl = q.get("url");

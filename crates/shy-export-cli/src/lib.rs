@@ -1,11 +1,11 @@
 //! 导出客户端 headless 核心（M-D2，REQ-2026-06-21-001）。
-//! HTTPS chunked 拉 Arrow IPC 流（`ureq`，无 async 运行时）→ 流式喂 `xwjd-xlsx-core` 生成。
+//! HTTPS chunked 拉 Arrow IPC 流（`ureq`，无 async 运行时）→ 流式喂 `shy-xlsx-core` 生成。
 //! Tauri 命令在工作线程调用 [`download_and_generate_cb`]，并传入进度回调。
 
 use std::io::BufReader;
 use std::path::Path;
 
-pub use xwjd_xlsx_core::{GenConfig, GenResult};
+pub use shy_xlsx_core::{GenConfig, GenResult};
 
 /// 进度回调参数：`(已完成单数, 已完成行数, 总单数估计)`；总数未知时为 0。
 pub type Progress = (u64, u64, u64);
@@ -52,7 +52,7 @@ pub fn download_and_generate_cb<F: FnMut(Progress)>(
         .unwrap_or(0);
 
     let reader = BufReader::new(resp.into_reader());
-    Ok(xwjd_xlsx_core::generate_from_arrow_cb(reader, cfg, |orders, rows| {
+    Ok(shy_xlsx_core::generate_from_arrow_cb(reader, cfg, |orders, rows| {
         on_progress((orders, rows, total));
     })?)
 }
@@ -74,5 +74,5 @@ fn read_error_message(resp: ureq::Response) -> Option<String> {
 /// 从本地 Arrow IPC 文件生成（联调/离线：消费 Java 端 ArrowExportWriter 产物，验证跨语言互通）。
 pub fn generate_local(path: &Path, cfg: &GenConfig) -> Result<GenResult, Box<dyn std::error::Error>> {
     let reader = BufReader::new(std::fs::File::open(path)?);
-    Ok(xwjd_xlsx_core::generate_from_arrow(reader, cfg)?)
+    Ok(shy_xlsx_core::generate_from_arrow(reader, cfg)?)
 }

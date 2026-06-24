@@ -1,15 +1,15 @@
 //! headless CLI（联调/无 GUI；Tauri 壳 M-D3 复用 lib）：
-//!   xwjd-export-cli <url> <out_dir> [base_name] [orders_per_file]
-//!   xwjd-export-cli --local <arrow_file> <out_dir> [base_name] [orders_per_file]
+//!   shy-export-cli <url> <out_dir> [base_name] [orders_per_file]
+//!   shy-export-cli --local <arrow_file> <out_dir> [base_name] [orders_per_file]
 use std::path::{Path, PathBuf};
-use xwjd_export_cli::{download_and_generate, generate_local, GenConfig};
+use shy_export_cli::{download_and_generate, generate_local, GenConfig};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let local = args.get(1).map(|s| s == "--local").unwrap_or(false);
     let base_i = if local { 2 } else { 1 }; // 源参数位置
     if args.len() < base_i + 2 {
-        eprintln!("用法: xwjd-export-cli [--local] <url|file> <out_dir> [base_name] [orders_per_file]");
+        eprintln!("用法: shy-export-cli [--local] <url|file> <out_dir> [base_name] [orders_per_file]");
         std::process::exit(2);
     }
     let cfg = GenConfig {

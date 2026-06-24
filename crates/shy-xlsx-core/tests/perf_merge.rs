@@ -1,7 +1,7 @@
 //! 合并单元格开销实测（解答「30k 行客户端导出慢，是不是 Excel 生成太慢」）。
 //! 用真实列结构（L0=16 合并列、L1=25 合并列、L2=6 叶子列）合成 30k 叶子行，
 //! 对比「全合并」vs「不合并（值写首行）」的生成耗时 / 合并区数 / 文件大小。
-//! 运行：cargo test -p xwjd-xlsx-core --release --test perf_merge -- --ignored --nocapture
+//! 运行：cargo test -p shy-xlsx-core --release --test perf_merge -- --ignored --nocapture
 
 use std::collections::HashMap;
 use std::io::{Cursor, Read};
@@ -12,7 +12,7 @@ use arrow::array::{ArrayRef, Int64Array, StringArray};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::ipc::writer::StreamWriter;
 use arrow::record_batch::RecordBatch;
-use xwjd_xlsx_core::{generate_from_arrow, GenConfig};
+use shy_xlsx_core::{generate_from_arrow, GenConfig};
 
 fn meta(p: &[(&str, &str)]) -> HashMap<String, String> {
     p.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()

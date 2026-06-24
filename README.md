@@ -1,11 +1,11 @@
-# 本地导出（SwiftExport）
+# ShyExcel · 数据导出
 
-通用高速数据导出桌面客户端（Windows / macOS）。由浏览器 `swiftexport://` 深链唤起，
+通用高速数据导出桌面客户端（Windows / macOS）。由浏览器 `shyexport://` 深链唤起，
 从业务服务端 **Arrow 流式**拉数据，在用户本机**流式生成多层合并的 Excel**——
 峰值内存与数据总量无关，轻松导出数十万订单 / 数百万行。
 
 ```
-业务前端 ──swiftexport://──▶ 本地导出客户端 ──GET Arrow 流──▶ 业务后端
+业务前端 ──shyexport://──▶ ShyExcel客户端 ──GET Arrow 流──▶ 业务后端
                                   │
                                   ▼ 本地生成 .xlsx（多层合并 + 多文件分块）
 ```
@@ -23,7 +23,7 @@
 一分钟版（前端唤起）：
 
 ```js
-const link = `swiftexport://export?job=${encodeURIComponent(jobId)}`
+const link = `shyexport://export?job=${encodeURIComponent(jobId)}`
            + `&url=${encodeURIComponent(streamUrl)}`; // streamUrl 必须整体编码
 window.location.href = link;
 ```
@@ -33,15 +33,15 @@ window.location.href = link;
 从 [Releases](../../releases) 下载：Windows `*-setup.exe`（NSIS，自动装 WebView2）、macOS `*.dmg`（Apple Silicon）。
 
 > macOS 当前为未签名构建，首次打开请右键 App →「打开」，或
-> `xattr -dr com.apple.quarantine "/Applications/本地导出.app"`。
+> `xattr -dr com.apple.quarantine "/Applications/ShyExcel.app"`。
 
 ## 开发 / 构建
 
 Tauri v2 + Rust workspace：
 
 ```
-crates/xwjd-xlsx-core    # Arrow IPC 流 → 多层合并 xlsx 生成核心（可独立复用）
-crates/xwjd-export-cli   # headless 拉流 + 生成核心（含 generate_local 离线联调）
+crates/shy-xlsx-core    # Arrow IPC 流 → 多层合并 xlsx 生成核心（可独立复用）
+crates/shy-export-cli   # headless 拉流 + 生成核心（含 generate_local 离线联调）
 src-tauri                # Tauri v2 GUI 壳（深链 / 托盘 / 进度事件）
 ui                       # 静态前端（编译期内嵌，无需 node 构建）
 ```

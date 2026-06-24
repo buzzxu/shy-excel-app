@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    xwjd_export_app_lib::run()
+    shy_export_app_lib::run()
 }

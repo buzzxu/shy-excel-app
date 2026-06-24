@@ -1,7 +1,7 @@
-# xwjd-export-client — 专用高速导出客户端（Tauri/Rust），REQ-2026-06-21-001
-# workspace：xwjd-xlsx-core(生成核心库) + 后续 src-tauri(GUI 壳，M-D2)
+# shy-export-client — 专用高速导出客户端（Tauri/Rust），REQ-2026-06-21-001
+# workspace：shy-xlsx-core(生成核心库) + 后续 src-tauri(GUI 壳，M-D2)
 [workspace]
-members = ["crates/xwjd-xlsx-core", "crates/xwjd-export-cli", "src-tauri"]
+members = ["crates/shy-xlsx-core", "crates/shy-export-cli", "src-tauri"]
 resolver = "2"
 
 [workspace.package]

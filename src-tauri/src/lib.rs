@@ -1,5 +1,5 @@
-//! 本地导出（SwiftExport）— 通用高速数据导出客户端 · Tauri v2 GUI 壳（REQ-2026-06-21-001）。
-//! 浏览器 `swiftexport://` 深链唤起 → 解析 job/token/url → 调 `download_and_generate_cb`
+//! ShyExcel · 数据导出 — 通用高速数据导出客户端 · Tauri v2 GUI 壳。
+//! 浏览器 `shyexport://` 深链唤起 → 解析 job/token/url → 调 `download_and_generate_cb`
 //! （Arrow 流式拉取 + 本地多层合并生成 + 多文件分块）→ 事件回传任务进度/结果。
 //! 托盘常驻 + 单实例路由 + 开机自启 + 设置持久化（下载目录/每文件订单数）。
 
@@ -10,7 +10,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_deep_link::DeepLinkExt;
 
 /// 唤起协议前缀（改名时只改这一处 + tauri.conf.json + 前端）。
-const DEEP_LINK_SCHEME: &str = "swiftexport://";
+const DEEP_LINK_SCHEME: &str = "shyexport://";
 
 /// 深链收件箱：前端 webview 就绪前到达的深链先缓冲，待前端 `frontend_ready` 时一次性领取，
 /// 解决「客户端未开时第一次点下载，任务收不到」的冷启动竞态。就绪后到达的深链直接发事件。
@@ -91,7 +91,7 @@ async fn run_export(
         let work = dl.join(if sub.is_empty() { "export" } else { &sub });
         std::fs::create_dir_all(&work).map_err(|e| format!("创建导出目录失败: {e}"))?;
 
-        let cfg = xwjd_export_cli::GenConfig {
+        let cfg = shy_export_cli::GenConfig {
             out_dir: work.clone(),
             base_name: base_name.clone(),
             orders_per_file: orders_per_file.max(1),
@@ -100,7 +100,7 @@ async fn run_export(
         // 进度回调：节流 ~120ms 发一次，避免事件风暴。
         let mut last = Instant::now();
         let mut first = true;
-        let res = xwjd_export_cli::download_and_generate_cb(&stream_url, &cfg, |(orders, rows, total)| {
+        let res = shy_export_cli::download_and_generate_cb(&stream_url, &cfg, |(orders, rows, total)| {
             if first || last.elapsed().as_millis() >= 120 {
                 first = false;
                 last = Instant::now();
@@ -247,7 +247,7 @@ pub fn run() {
             let menu = tauri::menu::Menu::with_items(app, &[&show, &settings, &quit])?;
             let _tray = tauri::tray::TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
-                .tooltip("本地导出")
+                .tooltip("ShyExcel")
                 .menu(&menu)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "quit" => app.exit(0),

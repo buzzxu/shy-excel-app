@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# 本地导出（SwiftExport）客户端 —— 本地构建 macOS DMG（企业内部分发，不上架 App Store）
+# ShyExcel · 数据导出 —— 本地构建 macOS DMG（企业内部分发，不上架 App Store）
 # -----------------------------------------------------------------------------
 # 为什么是本地脚本而不是 cnb/Docker：
 #   macOS 的 .app/.dmg 必须在 macOS 上打包（需 Apple 工具链 + hdiutil/codesign），
@@ -18,7 +18,7 @@
 #   公证(彻底无提示) → 另设 APPLE_ID / APPLE_PASSWORD(应用专用密码) / APPLE_TEAM_ID
 #   （Tauri 会自动读取以上环境变量完成签名与公证。）
 #
-# 产物：dist/xwjd-export-client-<version>-<arch>.dmg
+# 产物：dist/shy-export-client-<version>-<arch>.dmg
 # =============================================================================
 set -euo pipefail
 # 强制 UTF-8 locale：非交互/后台 shell 可能是 C locale，会导致 `$VAR中文` 紧邻全角字时
@@ -31,7 +31,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$HERE"
 
 ARCH="${ARCH:-arm64}"
-PRODUCT="本地导出"
+PRODUCT="ShyExcel"
 DIST="$HERE/dist"
 CONF="src-tauri/tauri.conf.json"
 
@@ -93,7 +93,7 @@ cargo tauri build --bundles dmg --target "$TARGET"
 SRC_DMG="$(find "target/$TARGET/release/bundle/dmg" -maxdepth 1 -name '*.dmg' 2>/dev/null | head -1)"
 [ -n "$SRC_DMG" ] || { echo "❌ 未找到 DMG，构建可能失败"; find target -name '*.dmg' 2>/dev/null; exit 1; }
 mkdir -p "$DIST"
-OUT="$DIST/xwjd-export-client-${VERSION}-${ARCH}.dmg"
+OUT="$DIST/shy-export-client-${VERSION}-${ARCH}.dmg"
 cp -f "$SRC_DMG" "$OUT"
 
 # --- 7. 自检 + 分发说明 ---

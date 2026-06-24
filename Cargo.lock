@@ -3808,6 +3808,42 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
+name = "shy-export-app"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "shy-export-cli",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-autostart",
+ "tauri-plugin-deep-link",
+ "tauri-plugin-dialog",
+ "tauri-plugin-opener",
+ "tauri-plugin-single-instance",
+ "tauri-plugin-store",
+]
+
+[[package]]
+name = "shy-export-cli"
+version = "0.1.0"
+dependencies = [
+ "arrow",
+ "serde_json",
+ "shy-xlsx-core",
+ "ureq",
+]
+
+[[package]]
+name = "shy-xlsx-core"
+version = "0.1.0"
+dependencies = [
+ "arrow",
+ "rust_xlsxwriter",
+ "zip 2.4.2",
+]
+
+[[package]]
 name = "signal-hook-registry"
 version = "1.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5789,42 +5825,6 @@ dependencies = [
  "libc",
  "once_cell",
  "pkg-config",
-]
-
-[[package]]
-name = "xwjd-export-app"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-autostart",
- "tauri-plugin-deep-link",
- "tauri-plugin-dialog",
- "tauri-plugin-opener",
- "tauri-plugin-single-instance",
- "tauri-plugin-store",
- "xwjd-export-cli",
-]
-
-[[package]]
-name = "xwjd-export-cli"
-version = "0.1.0"
-dependencies = [
- "arrow",
- "serde_json",
- "ureq",
- "xwjd-xlsx-core",
-]
-
-[[package]]
-name = "xwjd-xlsx-core"
-version = "0.1.0"
-dependencies = [
- "arrow",
- "rust_xlsxwriter",
- "zip 2.4.2",
 ]
 
 [[package]]

@@ -1,0 +1,118 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <clipPath id="sq"><rect x="86" y="86" width="852" height="852" rx="200" ry="200"/></clipPath>
+
+    <!-- 流动液体底色：左上明亮翡翠 → 中翠绿 → 右下深祖母绿 -->
+    <linearGradient id="liquid" x1="0.04" y1="0" x2="0.96" y2="1">
+      <stop offset="0" stop-color="#90F9DD"/>
+      <stop offset="0.40" stop-color="#19C79A"/>
+      <stop offset="1" stop-color="#04503E"/>
+    </linearGradient>
+
+    <!-- 上部泛光：玻璃迎光的明亮区（增强） -->
+    <radialGradient id="bloom" cx="0.30" cy="0.18" r="0.72">
+      <stop offset="0" stop-color="#FBFFFD" stop-opacity="1"/>
+      <stop offset="0.40" stop-color="#C2FCEA" stop-opacity="0.42"/>
+      <stop offset="1" stop-color="#C2FCEA" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- 斜向玻璃反光带（增强） -->
+    <linearGradient id="gloss" x1="0" y1="0" x2="0.55" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.9"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+
+    <!-- 集中镜面高光 -->
+    <radialGradient id="spec" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.95"/>
+      <stop offset="0.6" stop-color="#ffffff" stop-opacity="0.25"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- 底部玻璃内反射（向上渐隐） -->
+    <linearGradient id="innerRefl" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#EAFFF8" stop-opacity="0.34"/>
+      <stop offset="0.32" stop-color="#EAFFF8" stop-opacity="0"/>
+    </linearGradient>
+
+    <linearGradient id="sheetFill" x1="0" y1="0" x2="0.1" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.96"/>
+      <stop offset="1" stop-color="#E2FAF0" stop-opacity="0.86"/>
+    </linearGradient>
+
+    <linearGradient id="badge" x1="0.1" y1="0" x2="0.3" y2="1">
+      <stop offset="0" stop-color="#76F7D6"/>
+      <stop offset="0.55" stop-color="#1CC397"/>
+      <stop offset="1" stop-color="#0A9263"/>
+    </linearGradient>
+
+    <filter id="softblur" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="24"/></filter>
+    <filter id="bigblur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="34"/></filter>
+    <filter id="blob" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="58"/></filter>
+    <filter id="glyphshadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="18" stdDeviation="24" flood-color="#013626" flood-opacity="0.32"/>
+    </filter>
+    <filter id="iconshadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="26" stdDeviation="38" flood-color="#01231A" flood-opacity="0.42"/>
+    </filter>
+    <filter id="badgeshadow" x="-70%" y="-70%" width="240%" height="240%">
+      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#012F21" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+
+  <!-- 底座 squircle + 外阴影 -->
+  <g filter="url(#iconshadow)">
+    <rect x="86" y="86" width="852" height="852" rx="200" ry="200" fill="url(#liquid)"/>
+  </g>
+
+  <!-- 液态玻璃内层 -->
+  <g clip-path="url(#sq)">
+    <!-- 流动光斑 -->
+    <ellipse cx="285" cy="235" rx="350" ry="290" fill="#C8FCED" opacity="0.72" filter="url(#blob)"/>
+    <ellipse cx="830" cy="870" rx="410" ry="350" fill="#02402F" opacity="0.62" filter="url(#blob)"/>
+    <ellipse cx="770" cy="195" rx="210" ry="185" fill="#A8FFEF" opacity="0.46" filter="url(#blob)"/>
+    <ellipse cx="540" cy="540" rx="300" ry="240" fill="#37DBAA" opacity="0.22" filter="url(#blob)"/>
+    <!-- 迎光泛光 -->
+    <rect x="86" y="86" width="852" height="852" fill="url(#bloom)"/>
+    <!-- 斜向反光带 -->
+    <path d="M86 86 L676 86 L398 576 L86 576 Z" fill="url(#gloss)" filter="url(#softblur)"/>
+    <!-- 集中镜面高光（左上） -->
+    <ellipse cx="320" cy="250" rx="190" ry="120" fill="url(#spec)" filter="url(#bigblur)"/>
+    <!-- 顶部镜面高光弧 -->
+    <path d="M150 248 Q430 110 884 200" fill="none" stroke="#ffffff" stroke-opacity="0.72" stroke-width="12" stroke-linecap="round" filter="url(#bigblur)"/>
+    <!-- 底部玻璃内反射 -->
+    <rect x="86" y="86" width="852" height="852" fill="url(#innerRefl)"/>
+    <!-- 上沿亮边 + 下沿暗折射边 -->
+    <rect x="99" y="99" width="826" height="826" rx="188" ry="188" fill="none" stroke="#ffffff" stroke-opacity="0.62" stroke-width="3.5"/>
+    <rect x="99" y="105" width="826" height="820" rx="186" ry="186" fill="none" stroke="#012a1e" stroke-opacity="0.14" stroke-width="3"/>
+  </g>
+
+  <!-- 前景玻璃字形：磨砂表格卡 -->
+  <g filter="url(#glyphshadow)">
+    <rect x="334" y="300" width="356" height="392" rx="54" fill="url(#sheetFill)"/>
+    <path d="M334 354 A54 54 0 0 1 388 300 H636 A54 54 0 0 1 690 354 V396 H334 Z" fill="#13B98A" opacity="0.94"/>
+    <g stroke="#13B98A" stroke-opacity="0.26" stroke-width="6">
+      <line x1="334" y1="494" x2="690" y2="494"/>
+      <line x1="334" y1="593" x2="690" y2="593"/>
+      <line x1="453" y1="396" x2="453" y2="692"/>
+      <line x1="571" y1="396" x2="571" y2="692"/>
+    </g>
+    <!-- 卡片顶部玻璃高光 -->
+    <path d="M360 318 H664" stroke="#ffffff" stroke-opacity="0.55" stroke-width="6" stroke-linecap="round"/>
+    <rect x="334" y="640" width="356" height="52" rx="6" fill="#0c7a5a" opacity="0.10"/>
+    <rect x="334" y="300" width="356" height="392" rx="54" fill="none" stroke="#ffffff" stroke-opacity="0.92" stroke-width="3"/>
+  </g>
+
+  <!-- 导出徽标（玻璃圆 + 镜面高光 + 白色下载箭头） -->
+  <g filter="url(#badgeshadow)">
+    <circle cx="700" cy="692" r="120" fill="url(#badge)"/>
+    <ellipse cx="658" cy="642" rx="78" ry="44" fill="#ffffff" opacity="0.52" filter="url(#softblur)"/>
+    <path d="M612 624 Q700 596 788 638" fill="none" stroke="#ffffff" stroke-opacity="0.6" stroke-width="6" stroke-linecap="round" filter="url(#softblur)"/>
+    <circle cx="700" cy="692" r="120" fill="none" stroke="#ffffff" stroke-opacity="0.68" stroke-width="3"/>
+    <g stroke="#ffffff" stroke-width="25" stroke-linecap="round" stroke-linejoin="round" fill="none">
+      <line x1="700" y1="628" x2="700" y2="758"/>
+      <path d="M648 710 L700 762 L752 710"/>
+    </g>
+  </g>
+</svg>

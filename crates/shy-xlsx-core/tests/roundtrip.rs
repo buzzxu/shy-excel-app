@@ -9,7 +9,7 @@ use arrow::array::{ArrayRef, Int64Array, StringArray};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::ipc::writer::StreamWriter;
 use arrow::record_batch::RecordBatch;
-use xwjd_xlsx_core::{generate_from_arrow, GenConfig};
+use shy_xlsx_core::{generate_from_arrow, GenConfig};
 
 fn meta(p: &[(&str, &str)]) -> HashMap<String, String> {
     p.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()

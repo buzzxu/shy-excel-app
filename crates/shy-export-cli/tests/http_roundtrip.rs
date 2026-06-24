@@ -10,7 +10,7 @@ use arrow::array::{ArrayRef, Int64Array, StringArray};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::ipc::writer::StreamWriter;
 use arrow::record_batch::RecordBatch;
-use xwjd_export_cli::{download_and_generate, GenConfig};
+use shy_export_cli::{download_and_generate, GenConfig};
 
 fn meta(p: &[(&str, &str)]) -> HashMap<String, String> {
     p.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
