@@ -1,0 +1,88 @@
+name: release
+
+# 推送 v* 版本 tag（如 v0.1.0）→ 在 macOS / Windows runner 上**原生**构建，
+# 自动创建对应 tag 的 GitHub Release 并挂上安装包（.dmg / -setup.exe）。
+# 也可在 Actions 页手动「Run workflow」触发：此时**不动 Release**，仅构建并把
+# 产物作为 workflow artifacts 上传（用于验证能否成功打包）。
+#
+# 设计要点（区别于旧 cnb 流水线）：
+#   - GitHub 提供原生 runner：Windows 直接 x64 编译（不再 cargo-xwin 交叉），
+#     macOS 直接在 Mac 上打 DMG（旧方案只能本地脚本，无法进 CI）。
+#   - 前端为静态 ui/，Tauri 编译期内嵌 → 无 node / 无 beforeBuildCommand。
+#   - Cargo workspace：target 在**仓库根**（故 rust-cache 用 '. -> target'）。
+#   - macOS：仅 Apple Silicon（aarch64），ad-hoc 未签名（见 Release 说明的 Gatekeeper 绕过）。
+#   - Windows：NSIS 安装包，默认 downloadBootstrapper 安装时自动装 WebView2 运行时。
+#   - 代码签名/公证为可选：在仓库 Secrets 配置下方 APPLE_* 后自动启用，无需改本文件。
+#
+# 用法：git tag v0.1.0 && git push origin v0.1.0  → 自动构建并发布到 Releases 页。
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write # 创建 Release / 上传资产所需
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false # 一个平台失败不取消另一个
+      matrix:
+        include:
+          - platform: macos-latest # Apple Silicon runner
+            target: aarch64-apple-darwin
+            bundles: dmg
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            bundles: nsis
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: '. -> target' # workspace 的 target 在仓库根，非 src-tauri/target
+
+      - name: Build & release
+        id: tauri
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # ── macOS 代码签名 + 公证（可选；配置以下 Secrets 即自动启用，无 Secrets 则 ad-hoc 未签名）──
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          # 仅 tag 触发时创建 Release；手动触发 tagName 为空 → 只构建不发版
+          tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+          releaseName: '本地导出 ${{ github.ref_name }}'
+          releaseBody: |
+            自动构建产物（见下方 Assets）：
+            - macOS (Apple Silicon)：`.dmg`
+            - Windows (x64)：`-setup.exe`（NSIS 安装包，安装时自动安装 WebView2 运行时）
+
+            > macOS 为未签名 / ad-hoc 构建：首次打开请在「访达」右键 App →「打开」，
+            > 或执行 `xattr -dr com.apple.quarantine "/Applications/本地导出.app"`。
+          releaseDraft: false
+          prerelease: ${{ contains(github.ref_name, '-') }} # v1.0.0-rc1 之类自动标为预发布
+          args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+
+      # 手动触发（非 tag）时把安装包作为 workflow artifact 上传，便于下载验证
+      - name: Upload bundles (manual runs)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}-bundles
+          path: target/${{ matrix.target }}/release/bundle/${{ matrix.bundles }}/*
+          if-no-files-found: warn
