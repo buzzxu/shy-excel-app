@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# 雪王高速导出客户端 —— 本地构建 macOS DMG（企业内部分发，不上架 App Store）
+# 本地导出（SwiftExport）客户端 —— 本地构建 macOS DMG（企业内部分发，不上架 App Store）
 # -----------------------------------------------------------------------------
 # 为什么是本地脚本而不是 cnb/Docker：
 #   macOS 的 .app/.dmg 必须在 macOS 上打包（需 Apple 工具链 + hdiutil/codesign），
@@ -31,7 +31,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$HERE"
 
 ARCH="${ARCH:-arm64}"
-PRODUCT="雪王高速导出"
+PRODUCT="本地导出"
 DIST="$HERE/dist"
 CONF="src-tauri/tauri.conf.json"
 

@@ -3,7 +3,7 @@ name = "xwjd-export-app"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "雪王高速导出客户端（Tauri v2 GUI 壳，M-D3）"
+description = "本地导出 · 通用高速数据导出客户端（Tauri v2 GUI 壳）"
 
 [lib]
 name = "xwjd_export_app_lib"

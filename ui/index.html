@@ -3,37 +3,218 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>雪王高速导出</title>
+  <title>本地导出</title>
   <style>
-    :root { --brand: #e6001e; }
+    :root {
+      --brand: #3E63F0;
+      --bg: #ececf0;
+      --surface: rgba(255,255,255,0.72);
+      --surface-solid: #ffffff;
+      --card: #ffffff;
+      --text: #1d1d1f;
+      --text-2: #6e6e73;
+      --text-3: #8e8e93;
+      --hairline: rgba(0,0,0,0.08);
+      --hairline-strong: rgba(0,0,0,0.12);
+      --fill: #f2f2f5;
+      --fill-hover: #e9e9ee;
+      --track: #e6e6eb;
+      --blue: #007aff;
+      --green: #34c759;
+      --amber: #ff9f0a;
+      --red: #ff3b30;
+      --shadow: 0 1px 2px rgba(0,0,0,.06), 0 8px 24px rgba(0,0,0,.06);
+      --shadow-pop: 0 8px 40px rgba(0,0,0,.18);
+      --radius: 14px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1c1c1e;
+        --surface: rgba(44,44,46,0.72);
+        --surface-solid: #2c2c2e;
+        --card: #2c2c2e;
+        --text: #f5f5f7;
+        --text-2: #aeaeb2;
+        --text-3: #8e8e93;
+        --hairline: rgba(255,255,255,0.10);
+        --hairline-strong: rgba(255,255,255,0.16);
+        --fill: #3a3a3c;
+        --fill-hover: #48484a;
+        --track: #3a3a3c;
+        --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.4);
+        --shadow-pop: 0 12px 48px rgba(0,0,0,.6);
+      }
+    }
     * { box-sizing: border-box; }
-    body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; margin: 0; color: #222; background: #f6f7f9; }
-    header { background: var(--brand); color: #fff; padding: 14px 18px; font-weight: 600; }
-    main { padding: 16px 18px; }
-    .settings { background: #fff; border-radius: 8px; padding: 14px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
-    .settings label { display: inline-block; min-width: 96px; color: #555; }
-    .row { margin: 8px 0; display: flex; align-items: center; gap: 8px; }
-    input { padding: 6px 8px; border: 1px solid #ccc; border-radius: 6px; }
-    input#dir { width: 360px; }
-    button { background: var(--brand); color: #fff; border: 0; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
-    button.ghost { background: #eee; color: #333; }
-    .tasks { background: #fff; border-radius: 8px; padding: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
-    .task { border-bottom: 1px solid #eee; padding: 10px; }
-    .task:last-child { border-bottom: 0; }
-    .task .meta { font-size: 12px; color: #888; }
-    .st-running { color: #c70; } .st-done { color: #2a7; } .st-error { color: var(--brand); }
-    .empty { color: #aaa; padding: 18px; text-align: center; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      -webkit-font-smoothing: antialiased;
+      font-size: 13.5px;
+      line-height: 1.45;
+    }
+    /* ---------- header ---------- */
+    header {
+      position: sticky; top: 0; z-index: 10;
+      display: flex; align-items: center; gap: 10px;
+      padding: 13px 18px;
+      background: var(--surface);
+      backdrop-filter: saturate(180%) blur(20px);
+      -webkit-backdrop-filter: saturate(180%) blur(20px);
+      border-bottom: 1px solid var(--hairline);
+    }
+    .logo { width: 22px; height: 22px; border-radius: 6px; background: var(--brand);
+      display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 13px; flex: 0 0 auto;
+      box-shadow: inset 0 0 0 .5px rgba(255,255,255,.2); }
+    .title { font-weight: 600; font-size: 15px; letter-spacing: .2px; }
+    .spacer { flex: 1; }
+    .btn {
+      appearance: none; border: 1px solid var(--hairline-strong); background: var(--surface-solid);
+      color: var(--text); padding: 6px 12px; border-radius: 8px; font-size: 13px; cursor: pointer;
+      display: inline-flex; align-items: center; gap: 6px; transition: background .15s, transform .06s, border-color .15s;
+      font-family: inherit;
+    }
+    .btn:hover { background: var(--fill-hover); }
+    .btn:active { transform: scale(.97); }
+    .btn.icon { padding: 6px 9px; }
+    .btn.ghost { border-color: transparent; background: transparent; color: var(--text-2); }
+    .btn.ghost:hover { background: var(--fill); color: var(--text); }
+    .btn.primary { background: var(--brand); border-color: transparent; color: #fff; font-weight: 500; }
+    .btn.primary:hover { filter: brightness(1.06); background: var(--brand); }
+    .btn:disabled { opacity: .4; cursor: default; }
+    svg.i { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+    /* ---------- main ---------- */
+    main { padding: 16px 16px 28px; max-width: 760px; margin: 0 auto; }
+    .tasks { display: flex; flex-direction: column; gap: 11px; }
+
+    .card {
+      background: var(--card); border: 1px solid var(--hairline); border-radius: var(--radius);
+      padding: 14px 15px; box-shadow: var(--shadow);
+      animation: pop .28s cubic-bezier(.22,.61,.36,1);
+    }
+    @keyframes pop { from { opacity: 0; transform: translateY(6px) scale(.99); } to { opacity: 1; transform: none; } }
+    .card .top { display: flex; align-items: center; gap: 10px; }
+    .card .name { font-weight: 600; font-size: 14px; margin-right: auto; }
+    .card .name::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 2px; background: var(--brand); margin-right: 8px; vertical-align: middle; opacity: .85; }
+    .card .sub { color: var(--text-3); font-size: 12px; font-variant-numeric: tabular-nums; }
+    .card .del { margin-left: auto; opacity: 0; transition: opacity .15s; }
+    .card:hover .del { opacity: 1; }
+
+    .badge { font-size: 11.5px; font-weight: 600; padding: 3px 9px; border-radius: 999px; display: inline-flex; align-items: center; gap: 5px; }
+    .badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+    .badge.run { color: var(--blue); background: color-mix(in srgb, var(--blue) 14%, transparent); }
+    .badge.run::before { animation: pulse 1s ease-in-out infinite; }
+    .badge.done { color: var(--green); background: color-mix(in srgb, var(--green) 16%, transparent); }
+    .badge.err { color: var(--red); background: color-mix(in srgb, var(--red) 16%, transparent); }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+
+    /* progress */
+    .prog { margin-top: 12px; }
+    .bar { height: 6px; border-radius: 999px; background: var(--track); overflow: hidden; }
+    .bar > i { display: block; height: 100%; border-radius: 999px;
+      background: linear-gradient(90deg, var(--brand), #6AA8FF);
+      width: 0%; transition: width .3s ease; }
+    .bar.indet > i { width: 38% !important; animation: indet 1.1s ease-in-out infinite; }
+    @keyframes indet { 0% { transform: translateX(-110%);} 100% { transform: translateX(320%);} }
+    .meta { display: flex; justify-content: space-between; gap: 10px; margin-top: 8px; color: var(--text-2); font-size: 12px; font-variant-numeric: tabular-nums; }
+
+    /* done stats */
+    .stats { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 11px; }
+    .stat .v { font-weight: 600; font-size: 15px; font-variant-numeric: tabular-nums; }
+    .stat .k { color: var(--text-3); font-size: 11px; margin-top: 1px; }
+    .path {
+      margin-top: 12px; display: flex; align-items: center; gap: 9px; padding: 9px 11px;
+      background: var(--fill); border: 1px solid var(--hairline); border-radius: 10px; cursor: pointer;
+      transition: background .15s; min-width: 0;
+    }
+    .path:hover { background: var(--fill-hover); }
+    .path .ic { color: var(--text-2); flex: 0 0 auto; }
+    .path .p { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: var(--text); font-variant-numeric: tabular-nums; }
+    .path .go { color: var(--brand); font-weight: 600; font-size: 12.5px; flex: 0 0 auto; }
+    .errbox { margin-top: 11px; padding: 9px 11px; border-radius: 10px; font-size: 12.5px;
+      color: var(--red); background: color-mix(in srgb, var(--red) 10%, transparent); border: 1px solid color-mix(in srgb, var(--red) 22%, transparent); word-break: break-word; }
+
+    /* empty */
+    .empty { text-align: center; padding: 64px 20px; color: var(--text-3); }
+    .empty .big { width: 56px; height: 56px; margin: 0 auto 14px; border-radius: 16px; background: var(--fill);
+      display: grid; place-items: center; }
+    .empty h3 { color: var(--text-2); font-weight: 600; font-size: 15px; margin: 0 0 4px; }
+    .empty p { margin: 0; font-size: 13px; }
+
+    /* ---------- settings sheet ---------- */
+    .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.28); backdrop-filter: blur(2px);
+      display: none; align-items: center; justify-content: center; z-index: 50; animation: fade .2s; }
+    .overlay.show { display: flex; }
+    @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+    .sheet { width: 460px; max-width: calc(100vw - 32px); background: var(--surface-solid);
+      border: 1px solid var(--hairline); border-radius: 18px; box-shadow: var(--shadow-pop);
+      padding: 20px; animation: rise .26s cubic-bezier(.22,.61,.36,1); }
+    @keyframes rise { from { opacity: 0; transform: translateY(10px) scale(.98);} to { opacity:1; transform: none; } }
+    .sheet h2 { margin: 0 0 16px; font-size: 16px; font-weight: 600; }
+    .field { margin-bottom: 16px; }
+    .field > label { display: block; font-size: 12px; color: var(--text-2); margin-bottom: 7px; font-weight: 500; }
+    .dirrow { display: flex; gap: 8px; }
+    input[type=text], input[type=number] {
+      flex: 1; min-width: 0; padding: 8px 11px; border: 1px solid var(--hairline-strong); border-radius: 9px;
+      background: var(--fill); color: var(--text); font-size: 13px; font-family: inherit; outline: none;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    input:focus { border-color: var(--brand); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 20%, transparent); background: var(--surface-solid); }
+    input[readonly] { color: var(--text-2); }
+    .hint { font-size: 11.5px; color: var(--text-3); margin-top: 6px; }
+    .sheet .actions { display: flex; justify-content: flex-end; margin-top: 4px; }
   </style>
 </head>
 <body>
-  <header>雪王高速导出客户端</header>
+  <header>
+    <div class="logo">本</div>
+    <div class="title">本地导出</div>
+    <div class="spacer"></div>
+    <button class="btn ghost" id="clearDone" title="清理已完成/失败的任务">
+      <svg class="i" viewBox="0 0 24 24"><path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13"/></svg>
+      清理
+    </button>
+    <button class="btn icon" id="openSettings" title="设置">
+      <svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 13a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 0 1-4 0v-.2A1.7 1.7 0 0 0 7 19.4a1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 2.6 14H2.4a2 2 0 0 1 0-4h.2a1.7 1.7 0 0 0 1.2-2.9 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10 2.6V2.4a2 2 0 0 1 4 0v.2a1.7 1.7 0 0 0 2.9 1.2 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V10a1.7 1.7 0 0 0 1.6 1.2h.2"/></svg>
+    </button>
+  </header>
+
   <main>
-    <div class="settings">
-      <div class="row"><label>导出目录</label><input id="dir" type="text" placeholder="选择导出目录" readonly /><button id="pick" class="ghost">选择…</button></div>
-      <div class="row"><label>每文件订单数</label><input id="chunk" type="number" value="70000" min="1000" step="10000" /><span class="meta" id="memhint"></span></div>
+    <div class="tasks" id="tasks"></div>
+    <div class="empty" id="empty">
+      <div class="big"><svg class="i" style="width:26px;height:26px;stroke:var(--text-3)" viewBox="0 0 24 24"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg></div>
+      <h3>暂无导出任务</h3>
+      <p>在后台点击「客户端高速导出」即可在此查看进度</p>
     </div>
-    <div class="tasks" id="tasks"><div class="empty">等待浏览器发起导出（点击页面「客户端高速导出」）…</div></div>
   </main>
+
+  <!-- 设置 -->
+  <div class="overlay" id="settings">
+    <div class="sheet">
+      <h2>设置</h2>
+      <div class="field">
+        <label>下载目录</label>
+        <div class="dirrow">
+          <input id="dir" type="text" readonly placeholder="选择导出文件保存的位置" />
+          <button class="btn" id="pick">更改…</button>
+        </div>
+        <div class="hint" id="dirhint">导出的文件将保存到此目录；多文件会按任务编号建子目录。</div>
+      </div>
+      <div class="field">
+        <label>每文件订单数</label>
+        <input id="chunk" type="number" min="1000" step="10000" value="70000" />
+        <div class="hint" id="memhint"></div>
+      </div>
+      <div class="actions">
+        <button class="btn primary" id="closeSettings">完成</button>
+      </div>
+    </div>
+  </div>
+
   <script src="main.js"></script>
 </body>
 </html>

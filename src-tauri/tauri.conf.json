@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "雪王高速导出",
+  "productName": "本地导出",
   "version": "0.1.0",
-  "identifier": "cool.cnb.fucksky.xwjd.export",
+  "identifier": "com.swiftexport.client",
   "build": {
     "frontendDist": "../ui"
   },
@@ -11,7 +11,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "雪王高速导出客户端",
+        "title": "本地导出",
         "width": 760,
         "height": 560,
         "resizable": true,
@@ -36,7 +36,7 @@
   "plugins": {
     "deep-link": {
       "desktop": {
-        "schemes": ["xwjdexport"]
+        "schemes": ["swiftexport"]
       }
     }
   }
