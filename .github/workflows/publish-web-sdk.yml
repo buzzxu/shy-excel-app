@@ -1,0 +1,68 @@
+name: publish-web-sdk
+
+# 把 web-sdk/（@yuanmai/client-export）发布到 cnb.cool 私有 npm 源。
+#
+# 触发：
+#   - 推送 `web-sdk-v*` tag（如 web-sdk-v0.2.0）→ 校验版本一致后**真实** npm publish。
+#     刻意用独立 tag 前缀，与桌面端 release.yml 的 `v*`（构建 .dmg/.exe）解耦，互不触发。
+#   - 手动 Run workflow → 仅 `npm publish --dry-run`，验证构建/打包，不真正发版。
+#
+# 前置：在仓库 Settings → Secrets → Actions 配置 `NPM_TOKEN`
+#       （cnb.cool 生成的、对该 registry 有写权限的访问令牌）。
+#
+# 发版流程：bump web-sdk/package.json 的 version → git tag web-sdk-vX.Y.Z → git push origin web-sdk-vX.Y.Z
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'web-sdk-v*'
+
+defaults:
+  run:
+    working-directory: web-sdk
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: 'https://npm.cnb.cool/fucksky/yuanmai/registry/'
+          scope: '@yuanmai'
+          cache: npm
+          cache-dependency-path: web-sdk/package-lock.json
+
+      # tag 触发时强校验 web-sdk-vX.Y.Z 的 X.Y.Z 必须等于 package.json 的 version，避免错发。
+      - name: Verify tag matches package version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          TAG_VER="${GITHUB_REF_NAME#web-sdk-v}"
+          PKG_VER="$(node -p "require('./package.json').version")"
+          echo "tag=$TAG_VER package.json=$PKG_VER"
+          if [ "$TAG_VER" != "$PKG_VER" ]; then
+            echo "::error::tag ($TAG_VER) 与 package.json version ($PKG_VER) 不一致"
+            exit 1
+          fi
+
+      - name: Install (clean)
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      # 真实发布仅在 tag 推送；手动触发只做 dry-run。publish 会经 prepublishOnly 自动 build。
+      - name: Publish to cnb.cool
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            npm publish
+          else
+            echo "manual run → dry-run（不真正发布）"
+            npm publish --dry-run
+          fi

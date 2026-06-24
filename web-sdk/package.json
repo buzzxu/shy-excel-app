@@ -1,0 +1,48 @@
+{
+  "name": "@yuanmai/client-export",
+  "version": "0.2.0",
+  "description": "唤起 ShyExcel 桌面客户端进行高速数据导出的前端 SDK（零依赖，跨框架）。",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup && node scripts/copy-types.mjs",
+    "test": "node --test test/*.test.mjs",
+    "prepublishOnly": "npm test && npm run build",
+    "pack:check": "npm run build && npm pack --dry-run"
+  },
+  "keywords": [
+    "shyexcel",
+    "export",
+    "excel",
+    "arrow",
+    "deep-link",
+    "client-export"
+  ],
+  "author": "",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=16"
+  },
+  "publishConfig": {
+    "registry": "https://npm.cnb.cool/fucksky/yuanmai/registry/",
+    "access": "restricted"
+  },
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^5.9.3"
+  }
+}
