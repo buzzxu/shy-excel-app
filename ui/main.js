@@ -71,7 +71,7 @@ function cardInner(t) {
       `<div class="stats">
          <div class="stat"><div class="v">${t.files}</div><div class="k">个文件</div></div>
          <div class="stat"><div class="v">${fmtNum(t.rows)}</div><div class="k">行记录</div></div>
-         <div class="stat"><div class="v">${fmtNum(t.orders)}</div><div class="k">订单（单）</div></div>
+         <div class="stat"><div class="v">${fmtNum(t.orders)}</div><div class="k">单</div></div>
          <div class="stat"><div class="v">${fmtDuration(t.elapsedMs)}</div><div class="k">耗时</div></div>
        </div>
        <div class="path" data-path title="${esc(t.path)}">

@@ -1,7 +1,7 @@
 //! ShyExcel · 数据导出 — 通用高速数据导出客户端 · Tauri v2 GUI 壳。
 //! 浏览器 `shyexport://` 深链唤起 → 解析 job/token/url → 调 `download_and_generate_cb`
 //! （Arrow 流式拉取 + 本地多层合并生成 + 多文件分块）→ 事件回传任务进度/结果。
-//! 托盘常驻 + 单实例路由 + 开机自启 + 设置持久化（下载目录/每文件订单数）。
+//! 托盘常驻 + 单实例路由 + 开机自启 + 设置持久化（下载目录/每文件单数）。
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;

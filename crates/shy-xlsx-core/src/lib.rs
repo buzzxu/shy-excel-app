@@ -20,7 +20,7 @@ pub struct GenConfig {
     pub out_dir: PathBuf,
     /// 文件基名（不含序号/扩展名），如 `导出订单_2026-06-22`。
     pub base_name: String,
-    /// 每文件顶层组（订单）数 —— 分块粒度，控内存（默认建议 7w）。
+    /// 每文件顶层组（一个「单」：订单/工单等）数 —— 分块粒度，控内存（默认建议 7w）。
     pub orders_per_file: u64,
 }
 
@@ -99,6 +99,9 @@ pub fn generate_from_arrow_cb<R: Read, F: FnMut(u64, u64)>(
 
     let mut gen = Generator::new(cfg, cols, num_levels, sheet_title, group_labels)?;
     let mut g = vec![0i64; num_levels];
+    // 批次内进度回报粒度：每满这么多行也回调一次，保证 UI「已导出 单/行」持续跳动，
+    // 即便服务端把整次导出放进一个大 batch（下游 Tauri 层 120ms 节流防事件风暴）。
+    const PROGRESS_EVERY_ROWS: u64 = 2048;
 
     for batch in sr {
         let batch = batch?;
@@ -116,6 +119,9 @@ pub fn generate_from_arrow_cb<R: Read, F: FnMut(u64, u64)>(
                 g[l] = gids[l].value(r);
             }
             gen.row(&g, &strs, r)?;
+            if gen.total_rows % PROGRESS_EVERY_ROWS == 0 {
+                on_progress(gen.total_orders, gen.total_rows);
+            }
         }
         on_progress(gen.total_orders, gen.total_rows);
     }
