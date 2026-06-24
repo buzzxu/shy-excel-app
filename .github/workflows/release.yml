@@ -56,13 +56,18 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # ── macOS 代码签名 + 公证（可选；配置以下 Secrets 即自动启用，无 Secrets 则 ad-hoc 未签名）──
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # ── macOS 代码签名 + 公证（默认关闭：ad-hoc 未签名，企业内部分发）──
+          # 用仓库变量 vars.MACOS_SIGN 作总开关，避免「误配/失效的 APPLE_CERTIFICATE Secret」强行走签名
+          # 流程而导致 `security import` 失败、整个打包挂掉（未开关时一律不导入证书 → 稳定出 ad-hoc 包）。
+          # 启用签名：① 仓库 Settings → Variables 设 MACOS_SIGN=true；
+          #          ② 配齐下面的 APPLE_* Secrets（APPLE_CERTIFICATE 必须是 .p12 的 base64，含私钥，
+          #             生成：`base64 -i cert.p12 | tr -d '\n' | pbcopy`；APPLE_CERTIFICATE_PASSWORD 为 .p12 密码）。
+          APPLE_CERTIFICATE: ${{ vars.MACOS_SIGN == 'true' && secrets.APPLE_CERTIFICATE || '' }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ vars.MACOS_SIGN == 'true' && secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
+          APPLE_SIGNING_IDENTITY: ${{ vars.MACOS_SIGN == 'true' && secrets.APPLE_SIGNING_IDENTITY || '' }}
+          APPLE_ID: ${{ vars.MACOS_SIGN == 'true' && secrets.APPLE_ID || '' }}
+          APPLE_PASSWORD: ${{ vars.MACOS_SIGN == 'true' && secrets.APPLE_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ vars.MACOS_SIGN == 'true' && secrets.APPLE_TEAM_ID || '' }}
         with:
           # 仅 tag 触发时创建 Release；手动触发 tagName 为空 → 只构建不发版
           tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
