@@ -30,7 +30,12 @@ pub fn download_and_generate_cb<F: FnMut(Progress)>(
         Ok(r) => r,
         // 服务端返回错误状态：尽量取 JSON message，绝不回显 URL。
         Err(ureq::Error::Status(code, r)) => {
-            let msg = read_error_message(r).unwrap_or_else(|| format!("服务端返回错误（HTTP {code}）"));
+            // 401/403（登出后令牌/会话失效在「请求建立时」就会命中这里）给明确的「登录失效」
+            // 提示，不回显鉴权响应体（常是 HTML/英文 Unauthorized，对用户无意义）。
+            let msg = match code {
+                401 | 403 => "登录状态已失效，请重新登录后重试导出。".to_string(),
+                _ => read_error_message(r).unwrap_or_else(|| format!("服务端返回错误（HTTP {code}）")),
+            };
             return Err(msg.into());
         }
         // 传输层错误（DNS/连接/超时等）：给通用提示，不带 URL。
@@ -52,9 +57,30 @@ pub fn download_and_generate_cb<F: FnMut(Progress)>(
         .unwrap_or(0);
 
     let reader = BufReader::new(resp.into_reader());
-    Ok(shy_xlsx_core::generate_from_arrow_cb(reader, cfg, |orders, rows| {
+    // 流式过程中连接被断开（如导出途中登出/网关掐断/网络波动；此时 HTTP 状态已是 200，
+    // 不会再变成 401）→ 底层抛 IO/Arrow 错误，这里统一映射为友好提示，不回显技术文案。
+    let res = shy_xlsx_core::generate_from_arrow_cb(reader, cfg, |orders, rows| {
         on_progress((orders, rows, total));
-    })?)
+    })
+    .map_err(|e| -> Box<dyn std::error::Error> {
+        let s = e.to_string().to_ascii_lowercase();
+        if s.contains("io") || s.contains("eof") || s.contains("fill whole buffer") || s.contains("unexpected") {
+            "导出中断：与服务器的连接已断开（可能是登录失效或网络波动），请重新登录后重试。".into()
+        } else {
+            format!("导出处理失败，请重试（{e}）").into()
+        }
+    })?;
+
+    // 完整性校验：已知总数却收到明显偏少（不足 90%）→ 视为中断，杜绝「悄悄交付残缺文件还报成功」。
+    // X-Export-Total-Orders 是估计值，用 90% 容差避免服务端略微高估时误报完整导出为未完成。
+    if total > 0 && res.orders.saturating_mul(10) < total.saturating_mul(9) {
+        return Err(format!(
+            "导出未完成：预计约 {total} 单，仅收到 {}，可能因登录失效或网络中断，请重新登录后重试。",
+            res.orders
+        )
+        .into());
+    }
+    Ok(res)
 }
 
 /// 从响应体读取 JSON 中的 `message`/`error` 字段（服务端 `Result` 错误体）。
