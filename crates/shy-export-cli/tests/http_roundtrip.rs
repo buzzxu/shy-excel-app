@@ -3,21 +3,27 @@
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::TcpListener;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
+use std::time::{Duration, Instant};
 
 use arrow::array::{ArrayRef, Int64Array, StringArray};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::ipc::writer::StreamWriter;
 use arrow::record_batch::RecordBatch;
-use shy_export_cli::{download_and_generate, download_and_generate_cb, GenConfig};
+use shy_export_cli::{download_and_generate, download_and_generate_bg, download_and_generate_cb, GenConfig};
 
 fn meta(p: &[(&str, &str)]) -> HashMap<String, String> {
     p.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
 }
 
 fn arrow_bytes(n_orders: usize, k: usize) -> Vec<u8> {
+    arrow_bytes_batches(n_orders, k, 1)
+}
+
+/// 同 [`arrow_bytes`]，但写 `batches` 个 record batch、每个 `n_orders` 单（gid 接续编号）；`batches = 0` 即空导出（schema + EOS）。
+fn arrow_bytes_batches(n_orders: usize, k: usize, batches: usize) -> Vec<u8> {
     let fields = vec![
         Field::new("__gid0", DataType::Int64, true).with_metadata(meta(&[("role", "gid"), ("level", "0")])),
         Field::new("__gid1", DataType::Int64, true).with_metadata(meta(&[("role", "gid"), ("level", "1")])),
@@ -25,28 +31,29 @@ fn arrow_bytes(n_orders: usize, k: usize) -> Vec<u8> {
         Field::new("c1", DataType::Utf8, true).with_metadata(meta(&[("role", "col"), ("title", "商品"), ("merge", "false"), ("level", "1"), ("type", "STRING"), ("width", "20")])),
     ];
     let schema = Arc::new(Schema::new(fields));
-    let (mut g0, mut g1, mut c0, mut c1) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
-    let mut item = 0i64;
-    for o in 0..n_orders {
-        for _ in 0..k {
-            g0.push(o as i64);
-            g1.push(item);
-            item += 1;
-            c0.push(format!("DD{:06}", o));
-            c1.push(format!("商品{}", item));
-        }
-    }
-    let cols: Vec<ArrayRef> = vec![
-        Arc::new(Int64Array::from(g0)),
-        Arc::new(Int64Array::from(g1)),
-        Arc::new(StringArray::from(c0)),
-        Arc::new(StringArray::from(c1)),
-    ];
-    let batch = RecordBatch::try_new(schema.clone(), cols).unwrap();
     let mut buf = Vec::new();
     {
         let mut w = StreamWriter::try_new(&mut buf, &schema).unwrap();
-        w.write(&batch).unwrap();
+        let mut item = 0i64;
+        for b in 0..batches {
+            let (mut g0, mut g1, mut c0, mut c1) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+            for o in b * n_orders..(b + 1) * n_orders {
+                for _ in 0..k {
+                    g0.push(o as i64);
+                    g1.push(item);
+                    item += 1;
+                    c0.push(format!("DD{:06}", o));
+                    c1.push(format!("商品{}", item));
+                }
+            }
+            let cols: Vec<ArrayRef> = vec![
+                Arc::new(Int64Array::from(g0)),
+                Arc::new(Int64Array::from(g1)),
+                Arc::new(StringArray::from(c0)),
+                Arc::new(StringArray::from(c1)),
+            ];
+            w.write(&RecordBatch::try_new(schema.clone(), cols).unwrap()).unwrap();
+        }
         w.finish().unwrap();
     }
     buf
@@ -211,4 +218,120 @@ fn http_redirect_rejected() {
     std::fs::remove_dir_all(&dir).ok();
     assert!(err.contains("302") && err.contains("非预期"), "302 应被拒绝，实际: {err}");
     assert!(!err.contains("secret") && !err.contains("evil"), "不应回显 URL/Location: {err}");
+}
+
+/// 服务端「卡住」：接受连接、发完 `prefix`（可为空）后既不再发也不关连接，客户端读会一直阻塞。
+/// 300ms 后另一线程置取消标志 → `download_and_generate_bg` 须不等阻塞中的读、立即返回「已取消导出」。
+fn cancel_while_stalled(prefix: Vec<u8>, tag: &str) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    thread::spawn(move || {
+        if let Ok((mut stream, _)) = listener.accept() {
+            let mut buf = [0u8; 2048];
+            let _ = stream.read(&mut buf);
+            let _ = stream.write_all(&prefix);
+            let _ = stream.flush();
+            thread::sleep(Duration::from_secs(60)); // 持有连接不关
+        }
+    });
+    let (dir, cfg) = tmp_cfg(tag);
+    let cancel = Arc::new(AtomicBool::new(false));
+    let c = cancel.clone();
+    thread::spawn(move || {
+        thread::sleep(Duration::from_millis(300));
+        c.store(true, Ordering::Relaxed);
+    });
+    let t0 = Instant::now();
+    let (res, _worker) = download_and_generate_bg(format!("http://127.0.0.1:{port}/s?job=j&token=t"), cfg, cancel, |_| {});
+    let elapsed = t0.elapsed();
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(expect_err(res), "已取消导出");
+    assert!(elapsed < Duration::from_secs(3), "取消应立即返回，实际耗时 {elapsed:?}");
+}
+
+/// 等响应头期间取消（服务端首批数据迟迟没凑齐，一个字节都没发）。
+#[test]
+fn http_cancel_while_waiting_headers() {
+    cancel_while_stalled(Vec::new(), "stall_head");
+}
+
+/// 已收到响应头和半条流后服务端停顿，此时取消。
+#[test]
+fn http_cancel_while_body_stalled() {
+    let body = arrow_bytes(10, 2);
+    let mut prefix = arrow_head(body.len()).into_bytes();
+    prefix.extend_from_slice(&body[..body.len() / 2]);
+    cancel_while_stalled(prefix, "stall_body");
+}
+
+/// 服务端已发出响应头和 schema、首批数据前出错断开（DB 异常/超时）→ 提示服务端出错，不引导用户去重新登录。
+#[test]
+fn http_drop_before_first_batch() {
+    let body = arrow_bytes(10, 2);
+    // schema 消息 = continuation(4) + 元数据长度(4) + 元数据；响应头仍声明完整长度，发到 cut 就断开。
+    // 断在 schema 之后（消息边界，走 EOS 校验）和断在首批数据中间（走读错误分支）都应给同一提示。
+    let schema_end = 8 + i32::from_le_bytes(body[4..8].try_into().unwrap()) as usize;
+    for cut in [schema_end, schema_end + 16] {
+        let port = serve_once(arrow_head(body.len()), body[..cut].to_vec(), 1.0);
+        let (dir, cfg) = tmp_cfg(&format!("nobatch{cut}"));
+        let url = format!("http://127.0.0.1:{}/s?job=j&token=t", port);
+        let err = expect_err(download_and_generate(&url, &cfg));
+        std::fs::remove_dir_all(&dir).ok();
+        assert_eq!(err, "导出中断：服务端在返回数据前出错或连接已断开，请稍后在页面重新发起导出。", "cut={cut}");
+    }
+}
+
+/// 工作线程版本的成功路径：结果与直接调用一致，工作线程正常结束。
+#[test]
+fn http_bg_ok_path() {
+    let body = arrow_bytes(10, 2);
+    let port = serve_once(arrow_head(body.len()), body, 1.0);
+    let (dir, cfg) = tmp_cfg("bgok");
+    let (res, worker) = download_and_generate_bg(format!("http://127.0.0.1:{port}/s?job=j&token=t"), cfg, Arc::new(AtomicBool::new(false)), |_| {});
+    let res = res.map(|r| (r.orders, r.rows, r.files.len()));
+    let joined = worker.join();
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(res.unwrap(), (10, 20, 3));
+    assert!(joined.is_ok(), "工作线程应正常结束");
+}
+
+/// 工作线程 panic（如进度回调出错）→ 映射为「内部错误」，调用方不会挂住。
+#[test]
+fn http_bg_panic_maps_to_internal_error() {
+    let body = arrow_bytes(10, 2);
+    let port = serve_once(arrow_head(body.len()), body, 1.0);
+    let (dir, cfg) = tmp_cfg("bgpanic");
+    let (res, worker) = download_and_generate_bg(format!("http://127.0.0.1:{port}/s?job=j&token=t"), cfg, Arc::new(AtomicBool::new(false)), |_| panic!("emit boom"));
+    let err = expect_err(res);
+    let joined = worker.join();
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(err, "导出处理失败，请重试（内部错误）");
+    assert!(joined.is_err(), "工作线程应已 panic");
+}
+
+/// 数据已开始（第 1 批已解出）后在第 2 批中途断开 → 仍是「连接已断开」提示（区别于首批前断开）。
+#[test]
+fn http_drop_after_data_started() {
+    let one = arrow_bytes(10, 2); // schema + 第 1 批 + EOS
+    let body = arrow_bytes_batches(10, 2, 2); // schema + 第 1 批 + 第 2 批 + EOS（前两段与 one 相同）
+    let batch2_start = one.len() - 8;
+    let cut = batch2_start + (body.len() - one.len()) / 2; // 第 2 批中间
+    let port = serve_once(arrow_head(body.len()), body[..cut].to_vec(), 1.0);
+    let (dir, cfg) = tmp_cfg("drop2");
+    let url = format!("http://127.0.0.1:{}/s?job=j&token=t", port);
+    let err = expect_err(download_and_generate(&url, &cfg));
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(err, "导出中断：与服务器的连接已断开（可能是登录失效或网络波动），请重新登录后在页面重新发起导出。");
+}
+
+/// 空导出（只有 schema + EOS、0 行、无总数头）→ 正常完成，0 单 0 行。
+#[test]
+fn http_empty_export_ok() {
+    let body = arrow_bytes_batches(10, 2, 0);
+    let port = serve_once(arrow_head(body.len()), body, 1.0);
+    let (dir, cfg) = tmp_cfg("empty");
+    let url = format!("http://127.0.0.1:{}/s?job=j&token=t", port);
+    let res = download_and_generate(&url, &cfg).map(|r| (r.orders, r.rows));
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(res.unwrap(), (0, 0));
 }

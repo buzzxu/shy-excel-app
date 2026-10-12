@@ -1,5 +1,5 @@
 //! ShyExcel · 数据导出 — 通用高速数据导出客户端 · Tauri v2 GUI 壳。
-//! 浏览器 `shyexport://` 深链唤起 → 解析 job/token/url → 调 `download_and_generate_cb`
+//! 浏览器 `shyexport://` 深链唤起 → 解析 job/token/url → 调 `download_and_generate_bg`
 //! （Arrow 流式拉取 + 本地多层合并生成 + 多文件分块）→ 事件回传任务进度/结果。
 //! 托盘常驻 + 单实例路由 + 开机自启 + 设置持久化（下载目录/每文件单数）。
 
@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_deep_link::DeepLinkExt;
 
@@ -121,10 +121,10 @@ async fn run_export(
             orders_per_file: orders_per_file.max(1),
         };
 
-        // 进度回调：节流 ~120ms 发一次，避免事件风暴。
+        // 进度回调：节流 ~120ms 发一次，避免事件风暴（回调在导出工作线程上执行，所需状态 move 进去）。
         let mut last = Instant::now();
         let mut first = true;
-        let res = shy_export_cli::download_and_generate_cb(&stream_url, &cfg, &cancel, |(orders, rows, total)| {
+        let (res, worker) = shy_export_cli::download_and_generate_bg(stream_url, cfg, cancel, move |(orders, rows, total)| {
             if first || last.elapsed().as_millis() >= 120 {
                 first = false;
                 last = Instant::now();
@@ -139,8 +139,18 @@ async fn run_export(
                     },
                 );
             }
-        })
-        .map_err(|e| e.to_string())?;
+        });
+        // 取消时工作线程已被放弃，可能正在保存分块文件：最多等它 2s 收尾，免得外层删 work_dir 时与写入竞争。
+        // 之后它即使还活着也基本不会再写出文件：下一次读会看到取消标志报错退出；而 rust_xlsxwriter 的 save 只
+        // File::create、不建目录，work_dir 已删则保存直接失败。例外：Windows 上若分块文件此刻仍被打开（FAT/exFAT、
+        // 部分网络盘），目录可能删不掉，留下一个空的工作目录。
+        if res.is_err() {
+            let deadline = Instant::now() + Duration::from_secs(2);
+            while !worker.is_finished() && Instant::now() < deadline {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        }
+        let res = res.map_err(|e| e.to_string())?;
 
         // 归位：单文件 → 移回下载目录根（重名自动加序号）并删子目录；多文件 → 保留 jobid 子目录。
         // 移动失败（极少见）就原地交付工作目录里的文件：返回 Err 会触发失败清理，删掉唯一的完整产物。
@@ -179,7 +189,7 @@ async fn run_export(
     out
 }
 
-/// 取消进行中的导出：置位取消标志，拉流在下一次读取时中止（任务已结束/不存在则忽略）。
+/// 取消进行中的导出：置位取消标志，`run_export` 随即返回「已取消导出」（任务已结束/不存在则忽略）。
 #[tauri::command]
 fn cancel_export(running: State<Running>, task_id: String) {
     if let Some(f) = running.0.lock().unwrap().get(&task_id) {

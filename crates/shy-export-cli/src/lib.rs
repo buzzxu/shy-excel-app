@@ -1,10 +1,13 @@
 //! 导出客户端 headless 核心（M-D2，REQ-2026-06-21-001）。
 //! HTTPS chunked 拉 Arrow IPC 流（`ureq`，无 async 运行时）→ 流式喂 `shy-xlsx-core` 生成。
-//! Tauri 命令在工作线程调用 [`download_and_generate_cb`]，并传入进度回调。
+//! Tauri 命令调用 [`download_and_generate_bg`]（独立工作线程 + 可即时取消），并传入进度回调。
 
 use std::io::{self, BufReader, Read};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{self, RecvTimeoutError};
+use std::sync::Arc;
+use std::thread::JoinHandle;
 use std::time::Duration;
 
 pub use shy_xlsx_core::{GenConfig, GenResult};
@@ -14,12 +17,17 @@ pub type Progress = (u64, u64, u64);
 
 /// 建连超时。
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
-/// 读超时：按单次 socket 读计（非整次导出总时长），放宽到 5 分钟，避免服务端首查询慢时被误杀。
-const READ_TIMEOUT: Duration = Duration::from_secs(300);
+/// 读超时：按单次 socket 读的空闲时长计（非整次导出总时长），只用于识别死连接。服务端在发出首批数据前可能长时间
+/// 一个字节都不发（慢查询、排序等，大数据量时可达数分钟），故刻意长于网关的 `proxy_read_timeout`（600s），让网关先判超时。
+const READ_TIMEOUT: Duration = Duration::from_secs(15 * 60);
+/// [`download_and_generate_bg`] 等结果时查取消标志的间隔。
+const CANCEL_POLL: Duration = Duration::from_millis(200);
 /// Arrow IPC 流结束标记（EOS）：continuation `0xFFFFFFFF` + 长度 0；arrow-java `ArrowStreamWriter.end()/close()` 会写出。
 const ARROW_EOS: [u8; 8] = [0xFF, 0xFF, 0xFF, 0xFF, 0, 0, 0, 0];
-const TIMEOUT_MSG: &str = "服务器长时间无响应，导出已中止，请稍后重试。";
+const TIMEOUT_MSG: &str = "服务器长时间无响应，导出已中止，请稍后在页面重新发起导出。";
 const CANCEL_MSG: &str = "已取消导出";
+/// 响应头和 schema 已发出、一行数据都还没收到就断了：多半是服务端取数出错（DB 异常/超时），不是登录问题。
+const NO_DATA_MSG: &str = "导出中断：服务端在返回数据前出错或连接已断开，请稍后在页面重新发起导出。";
 
 /// 拉取 `url`（含 `?job=&token=`）的 Arrow 流并生成 xlsx（多文件分块，见 GenConfig）。
 /// 真流式：响应体边到边解码边写，内存与行数无关。
@@ -29,7 +37,7 @@ pub fn download_and_generate(url: &str, cfg: &GenConfig) -> Result<GenResult, Bo
 
 /// 同 [`download_and_generate`]，但读响应头 `X-Export-Total-Orders` 作总数估计，并在生成过程中
 /// 回调进度 `(orders, rows, total)`，供 UI 进度条/ETA。`cancel` 置位后，下一次读响应体即中止并返回「已取消导出」
-/// （等待响应头期间无法打断，见函数内注释）。
+/// （阻塞中的读打断不了，见函数内注释；要即时取消用 [`download_and_generate_bg`]）。
 ///
 /// 错误处理：服务端业务错误（HTTP 4xx/5xx，或 200 + JSON `Result`）会被识别并把 `message` 作为
 /// 错误信息返回，**且任何错误信息都不含请求 URL**（避免泄露 job/token/Authorization 等参数）。
@@ -46,7 +54,8 @@ pub fn download_and_generate_cb<F: FnMut(Progress)>(
         .redirects(0)
         .build();
     let result = agent.get(url).call();
-    // ureq 2 无法打断「等待响应头」中的请求：此间点取消，要等首字节到达或读超时后才在这里/读响应体时生效。
+    // ureq 2 无法打断「等待响应头」中的请求：此间点取消，要等首字节到达或读超时后才在这里/读响应体时生效
+    // （[`download_and_generate_bg`] 不等这一步，会先行返回）。
     if cancel.load(Ordering::Relaxed) {
         return Err(CANCEL_MSG.into());
     }
@@ -88,9 +97,11 @@ pub fn download_and_generate_cb<F: FnMut(Progress)>(
         .unwrap_or(0);
 
     let mut guard = StreamGuard { inner: BufReader::new(resp.into_reader()), cancel, tail: [0; 8], io_err: None, saw_eof: false };
+    let mut rows_seen = 0u64; // 已解出的行数；0 = 一行数据都还没收到
     // 流式过程中连接被断开（如导出途中登出/网关掐断/网络波动；此时 HTTP 状态已是 200，
     // 不会再变成 401）→ 按守卫记录的读取状态映射为友好提示，不回显技术文案；本地错误（如磁盘满）走最后一档。
     let res = match shy_xlsx_core::generate_from_arrow_cb(&mut guard, cfg, |orders, rows| {
+        rows_seen = rows;
         on_progress((orders, rows, total));
     }) {
         Ok(r) => r,
@@ -99,8 +110,10 @@ pub fn download_and_generate_cb<F: FnMut(Progress)>(
                 CANCEL_MSG.to_string()
             } else if matches!(guard.io_err, Some(io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock)) {
                 TIMEOUT_MSG.to_string()
+            } else if (guard.io_err.is_some() || guard.saw_eof) && rows_seen == 0 {
+                NO_DATA_MSG.to_string()
             } else if guard.io_err.is_some() || guard.saw_eof {
-                "导出中断：与服务器的连接已断开（可能是登录失效或网络波动），请重新登录后重试。".to_string()
+                "导出中断：与服务器的连接已断开（可能是登录失效或网络波动），请重新登录后在页面重新发起导出。".to_string()
             } else {
                 format!("导出处理失败，请重试（{e}）")
             };
@@ -115,20 +128,51 @@ pub fn download_and_generate_cb<F: FnMut(Progress)>(
 
     // 结束标记校验：连接恰在消息边界断开时 Arrow 当作正常结束（ureq chunked 断流也只返回 Ok(0)），
     // 只有 EOS 能证明服务端写完了整条流。
+    // 恰在 schema 之后断开（服务端首批数据前出错）也走这里：Arrow 把消息边界处的 EOF 当正常结束，解出 0 行。
     if guard.tail != ARROW_EOS {
-        return Err("导出未完成：数据流未正常结束（可能是登录失效或网络中断），请重新登录后重试。".into());
+        if res.rows == 0 {
+            return Err(NO_DATA_MSG.into());
+        }
+        return Err("导出未完成：数据流未正常结束（可能是登录失效或网络中断），请重新登录后在页面重新发起导出。".into());
     }
 
     // 完整性校验：已知总数却收到明显偏少（不足 90%）→ 视为中断，杜绝「悄悄交付残缺文件还报成功」。
     // X-Export-Total-Orders 是估计值，用 90% 容差避免服务端略微高估时误报完整导出为未完成。
     if total > 0 && res.orders.saturating_mul(10) < total.saturating_mul(9) {
         return Err(format!(
-            "导出未完成：预计约 {total} 单，仅收到 {}，可能因登录失效或网络中断，请重新登录后重试。",
+            "导出未完成：预计约 {total} 单，仅收到 {}，可能因登录失效或网络中断，请重新登录后在页面重新发起导出。",
             res.orders
         )
         .into());
     }
     Ok(res)
+}
+
+/// 同 [`download_and_generate_cb`]，但放到独立工作线程上跑：调用方每 200ms 查一次 `cancel`，置位即返回「已取消导出」，
+/// 不等阻塞中的 socket 读（ureq 2 打断不了；等响应头或服务端停顿时会一直卡到读超时）。被放弃的工作线程在下一次读时
+/// 看到取消标志自行报错退出，最迟读超时后退出。同时返回它的 `JoinHandle`，供调用方清理输出目录前稍等它收尾。
+pub fn download_and_generate_bg<F: FnMut(Progress) + Send + 'static>(
+    url: String,
+    cfg: GenConfig,
+    cancel: Arc<AtomicBool>,
+    on_progress: F,
+) -> (Result<GenResult, Box<dyn std::error::Error>>, JoinHandle<()>) {
+    let (tx, rx) = mpsc::channel();
+    let flag = cancel.clone();
+    let worker = std::thread::spawn(move || {
+        // 已被放弃时接收端已关闭，send 失败无妨
+        let _ = tx.send(download_and_generate_cb(&url, &cfg, &flag, on_progress).map_err(|e| e.to_string()));
+    });
+    let res: Result<GenResult, Box<dyn std::error::Error>> = loop {
+        match rx.recv_timeout(CANCEL_POLL) {
+            Ok(r) => break r.map_err(Into::into),
+            Err(RecvTimeoutError::Timeout) if cancel.load(Ordering::Relaxed) => break Err(CANCEL_MSG.into()),
+            Err(RecvTimeoutError::Timeout) => {}
+            // 工作线程 panic：发送端随栈展开被丢弃
+            Err(RecvTimeoutError::Disconnected) => break Err("导出处理失败，请重试（内部错误）".into()),
+        }
+    };
+    (res, worker)
 }
 
 /// 响应体读取守卫：每次 read 先查取消标志；记下最后返回的 8 字节（判 EOS）、底层 IO 错误类型、
