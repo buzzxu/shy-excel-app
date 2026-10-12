@@ -172,6 +172,7 @@
     .card .sub { color: var(--text-3); font-size: 12px; font-variant-numeric: tabular-nums; }
     .card .del { margin-left: auto; opacity: 0; transition: opacity .15s; }
     .card:hover .del { opacity: 1; }
+    .card .cancel { margin-left: auto; }
 
     .badge { font-size: 11.5px; font-weight: 600; padding: 3px 10px; border-radius: 999px; display: inline-flex; align-items: center; gap: 5px;
       box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 22%, transparent); }
@@ -220,6 +221,7 @@
       background: linear-gradient(155deg, var(--aqua), var(--em) 60%, var(--em-deep));
       display: grid; place-items: center; color: #fff;
       box-shadow: 0 12px 30px color-mix(in srgb, var(--em) 40%, transparent), inset 0 1px 0 rgba(255,255,255,.5); }
+    .empty .big .i { width: 28px; height: 28px; } /* 描边色随 .big 的 color:#fff；CSP 禁止 style 属性，尺寸写在这里 */
     .empty h3 { color: var(--text-2); font-weight: 600; font-size: 15px; margin: 0 0 5px; }
     .empty p { margin: 0; font-size: 13px; }
 
@@ -247,6 +249,9 @@
     input:focus { border-color: var(--em); box-shadow: 0 0 0 3px color-mix(in srgb, var(--em) 22%, transparent); background: var(--surface-strong); }
     input[readonly] { color: var(--text-2); }
     .hint { font-size: 11.5px; color: var(--text-3); margin-top: 6px; }
+    .origin { display: flex; align-items: center; gap: 8px; padding: 4px 4px 4px 12px; margin-bottom: 6px;
+      background: var(--fill); border: 1px solid var(--hairline); border-radius: 10px; }
+    .origin .o { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
     .sheet .actions { display: flex; justify-content: flex-end; margin-top: 4px; }
 
     /* 可达性：减少动态 */
@@ -286,7 +291,7 @@
   <main>
     <div class="tasks" id="tasks"></div>
     <div class="empty" id="empty">
-      <div class="big"><svg class="i" style="width:28px;height:28px;stroke:#fff" viewBox="0 0 24 24"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg></div>
+      <div class="big"><svg class="i" viewBox="0 0 24 24"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg></div>
       <h3>暂无导出任务</h3>
       <p>从业务系统点击「导出」，任务会出现在这里并实时显示进度。</p>
     </div>
@@ -308,6 +313,10 @@
         <label>每文件单数</label>
         <input id="chunk" type="number" min="1000" step="10000" value="70000" />
         <div class="hint" id="memhint"></div>
+      </div>
+      <div class="field">
+        <label>已信任的数据来源</label>
+        <div id="origins"></div>
       </div>
       <div class="actions">
         <button class="btn primary" id="closeSettings">完成</button>

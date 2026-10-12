@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::TcpListener;
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::thread;
 
@@ -10,7 +11,7 @@ use arrow::array::{ArrayRef, Int64Array, StringArray};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::ipc::writer::StreamWriter;
 use arrow::record_batch::RecordBatch;
-use shy_export_cli::{download_and_generate, GenConfig};
+use shy_export_cli::{download_and_generate, download_and_generate_cb, GenConfig};
 
 fn meta(p: &[(&str, &str)]) -> HashMap<String, String> {
     p.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
@@ -164,4 +165,50 @@ fn http_incomplete_guard() {
     let err = expect_err(download_and_generate(&url, &cfg));
     std::fs::remove_dir_all(&dir).ok();
     assert!(err.contains("导出未完成"), "总数100实收10应判未完成，实际: {err}");
+}
+
+fn arrow_head(len: usize) -> String {
+    format!("HTTP/1.1 200 OK\r\nContent-Type: application/vnd.apache.arrow.stream\r\nContent-Length: {len}\r\nConnection: close\r\n\r\n")
+}
+
+/// 流在消息边界被截断（缺 EOS 结束标记）：Arrow 会当作正常结束，必须靠 EOS 校验判为未完成。
+#[test]
+fn http_missing_eos_is_incomplete() {
+    let mut body = arrow_bytes(10, 2);
+    body.truncate(body.len() - 8); // 去掉 EOS：0xFFFFFFFF 00000000
+    let port = serve_once(arrow_head(body.len()), body, 1.0);
+    let (dir, cfg) = tmp_cfg("noeos");
+    let url = format!("http://127.0.0.1:{}/s?job=j&token=t", port);
+    let err = expect_err(download_and_generate(&url, &cfg));
+    std::fs::remove_dir_all(&dir).ok();
+    assert!(err.contains("未完成"), "缺 EOS 应判未完成，实际: {err}");
+}
+
+/// 取消标志已置位 → 请求返回后、读响应体前即中止，提示「已取消导出」。
+#[test]
+fn http_cancelled() {
+    let body = arrow_bytes(10, 2);
+    let port = serve_once(arrow_head(body.len()), body, 1.0);
+    let (dir, cfg) = tmp_cfg("cancel");
+    let url = format!("http://127.0.0.1:{}/s?job=j&token=t", port);
+    let err = expect_err(download_and_generate_cb(&url, &cfg, &AtomicBool::new(true), |_| {}));
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(err, "已取消导出");
+}
+
+/// 不跟随重定向：302 指向一个能正常出流的地址，也必须拒绝（防可信来源被带到任意地址），且不回显 URL。
+#[test]
+fn http_redirect_rejected() {
+    let body = arrow_bytes(10, 2);
+    let target = serve_once(arrow_head(body.len()), body, 1.0);
+    let head = format!(
+        "HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:{target}/evil\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+    );
+    let port = serve_once(head, Vec::new(), 1.0);
+    let (dir, cfg) = tmp_cfg("redirect");
+    let url = format!("http://127.0.0.1:{}/s?job=j&token=secret", port);
+    let err = expect_err(download_and_generate(&url, &cfg));
+    std::fs::remove_dir_all(&dir).ok();
+    assert!(err.contains("302") && err.contains("非预期"), "302 应被拒绝，实际: {err}");
+    assert!(!err.contains("secret") && !err.contains("evil"), "不应回显 URL/Location: {err}");
 }

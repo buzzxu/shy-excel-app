@@ -12,6 +12,15 @@ const MAX_TASKS = 10;
 let store;
 let settings = { dir: "", chunk: 70000 };
 let tasks = []; // 最新在前
+let trusted = []; // 已信任的数据来源（origin），持久化于 store.trusted_origins
+const asking = new Map(); // origin → 进行中的信任确认；同来源的后续深链等同一个结果，不叠框
+let askQueue = Promise.resolve(); // 不同来源的确认框排队依次弹出
+const rejected = new Set(); // 本次运行内被拒绝的来源：其深链直接忽略、不再询问（不持久化，重启后恢复询问）
+
+// 并发闸：同时最多 MAX_CONCURRENT 个导出，其余先进先出排队；排队中取消直接出队，不调 run_export。
+const MAX_CONCURRENT = 2;
+let active = 0;
+const waiting = []; // { t, go }：go(true)=轮到它开始，go(false)=排队中被取消
 
 // ---------- 工具 ----------
 const fmtNum = (n) => (n || 0).toLocaleString("zh-CN");
@@ -48,16 +57,17 @@ function cardInner(t) {
   const short = t.job ? t.job.slice(0, 8) : t.id;
   const head = (badge) =>
     `<div class="top"><span class="name">导出任务 ${esc(short)}</span>${badge}` +
-    (t.status !== "running" ? `<button class="btn ghost icon del" data-del title="删除"><svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>` : "") +
+    (t.status !== "running"
+      ? `<button class="btn ghost icon del" data-del title="删除"><svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>`
+      : `<button class="btn ghost cancel" data-cancel title="取消导出" ${t.cancelling ? "disabled" : ""}>${t.cancelling ? "取消中…" : "取消"}</button>`) +
     `</div>`;
 
   if (t.status === "running") {
-    const hasTotal = t.total > 0;
-    const p = hasTotal ? Math.min(99, Math.round((t.orders / t.total) * 100)) : 0;
+    const hasTotal = t.total > 0; // 进度条宽度由 updateProgress 经 CSSOM 设置：CSP 不允许 style 属性
     return (
-      head(`<span class="badge run">进行中</span>`) +
+      head(`<span class="badge run">${t.queued ? "排队中" : "进行中"}</span>`) +
       `<div class="prog">
-         <div class="bar ${hasTotal ? "" : "indet"}"><i data-bar style="width:${p}%"></i></div>
+         <div class="bar ${hasTotal ? "" : "indet"}"><i data-bar></i></div>
          <div class="meta" data-meta>${runMeta(t)}</div>
        </div>`
     );
@@ -86,6 +96,7 @@ function cardInner(t) {
 }
 
 function runMeta(t) {
+  if (t.queued) return `<span>排队中…</span>`;
   const elapsed = (Date.now() - t.startedAt) / 1000;
   const left = `已导出 ${fmtNum(t.orders)} 单 · ${fmtNum(t.rows)} 行`;
   let right;
@@ -103,8 +114,20 @@ function runMeta(t) {
 function bindCard(t) {
   const del = t.el.querySelector("[data-del]");
   if (del) del.onclick = () => removeTask(t);
+  const cancel = t.el.querySelector("[data-cancel]");
+  if (cancel) cancel.onclick = () => {
+    const q = waiting.findIndex((w) => w.t === t);
+    if (q >= 0) {
+      waiting.splice(q, 1)[0].go(false); // 排队中：出队即可，不调 run_export
+      return;
+    }
+    t.cancelling = true; // 记在任务上，重绘卡片后仍显示「取消中…」
+    refreshCard(t);
+    invoke("cancel_export", { taskId: t.id }).catch(() => {});
+  };
   const path = t.el.querySelector("[data-path]");
-  if (path) path.onclick = () => invoke("reveal_path", { path: t.path, isDir: t.isDir }).catch(() => {});
+  if (path) path.onclick = () => invoke("reveal_path", { path: t.path }).catch(() => {});
+  updateProgress(t);
 }
 
 function mountTask(t) {
@@ -114,9 +137,10 @@ function mountTask(t) {
   t.el = el;
   tasksEl.prepend(el);
   bindCard(t);
-  // 淘汰最旧
-  while (tasks.length > MAX_TASKS) {
-    const old = tasks.pop();
+  // 淘汰最旧的非进行中任务：进行中/排队中的绝不淘汰（否则取消按钮随卡片消失），列表可暂时超过上限
+  for (let i = tasks.length - 1; tasks.length > MAX_TASKS && i >= 0; i--) {
+    if (tasks[i].status === "running") continue;
+    const [old] = tasks.splice(i, 1);
     if (old.el) old.el.remove();
   }
   updateEmpty();
@@ -130,6 +154,7 @@ function updateProgress(t) {
   if (t.status !== "running" || !t.el) return;
   const bar = t.el.querySelector("[data-bar]");
   const meta = t.el.querySelector("[data-meta]");
+  if (bar) bar.parentElement.classList.toggle("indet", !(t.total > 0)); // 卡片首绘时总数未知；拿到总数后改显真实进度
   if (bar && t.total > 0) bar.style.width = Math.min(99, Math.round((t.orders / t.total) * 100)) + "%";
   if (meta) meta.innerHTML = runMeta(t);
 }
@@ -151,6 +176,9 @@ function serialize(t) {
 async function saveTasks() {
   if (store) await store.set("tasks", tasks.map(serialize));
 }
+async function saveTrusted() {
+  if (store) await store.set("trusted_origins", trusted);
+}
 
 // ---------- 导出流程 ----------
 let seq = 0;
@@ -159,6 +187,29 @@ function createTask(job) {
   tasks.unshift(t);
   mountTask(t);
   return t;
+}
+
+// 拿并发名额：有空位立即返回 true；否则排队，轮到时 true、排队中被取消时 false。
+function acquire(t) {
+  if (active < MAX_CONCURRENT) {
+    active++;
+    return Promise.resolve(true);
+  }
+  t.queued = true;
+  refreshCard(t);
+  return new Promise((go) => waiting.push({ t, go }));
+}
+// 归还名额：有人排队则直接转给队首，否则空出一个位置。
+function release() {
+  const next = waiting.shift();
+  if (!next) {
+    active--;
+    return;
+  }
+  next.t.queued = false;
+  next.t.startedAt = Date.now(); // 吞吐/ETA 从真正开始拉流算起
+  refreshCard(next.t);
+  next.go(true);
 }
 
 function parseDeepLink(url) {
@@ -183,7 +234,66 @@ async function handleDeepLink(url) {
     openSettings();
     return;
   }
+  // 信任边界：只放行 http(s) 流地址，且其来源（origin）须经用户首次确认后才会拉取、写文件。卡片绝不展示 URL。
+  let src = null;
+  try { src = new URL(streamUrl); } catch (_) {}
+  if (!src || (src.protocol !== "http:" && src.protocol !== "https:")) {
+    const bad = createTask(job);
+    bad.status = "error";
+    bad.error = "导出链接无效";
+    refreshCard(bad);
+    saveTasks();
+    return;
+  }
+  if (rejected.has(src.origin)) return;
+  if (!trusted.includes(src.origin)) {
+    let asked = asking.get(src.origin);
+    if (!asked) {
+      asked = askQueue = askQueue
+        .then(() =>
+          dialog.ask(
+            `是否信任以下数据来源并开始导出？\n\n${src.origin}\n\n` +
+              "信任后，来自该来源的导出链接将直接从该地址下载数据并保存到下载目录，不再询问。" +
+              (src.protocol === "http:" ? "\n\n注意：该来源使用 http，连接未加密。" : ""),
+            { title: "新的数据来源", kind: "warning", okLabel: "信任并导出", cancelLabel: "拒绝" }
+          )
+        )
+        .catch(() => null); // 确认框本身弹不出（插件/权限异常）≠ 用户拒绝
+      asking.set(src.origin, asked);
+    }
+    const ok = await asked;
+    const first = asking.get(src.origin) === asked; // 同一次确认的多个等待者里，只有第一个负责出错误卡片
+    asking.delete(src.origin);
+    if (ok === null) {
+      if (first) {
+        const bad = createTask(job);
+        bad.status = "error";
+        bad.error = "无法显示信任确认框，请重试";
+        refreshCard(bad);
+        saveTasks();
+      }
+      return;
+    }
+    if (!ok) {
+      rejected.add(src.origin);
+      return;
+    }
+    if (!trusted.includes(src.origin)) {
+      trusted.push(src.origin);
+      saveTrusted();
+    }
+    // 等待确认期间同一 job 可能已由另一条深链启动
+    if (job && tasks.some((t) => t.job === job && t.status === "running")) return;
+  }
   const t = createTask(job);
+  if (!(await acquire(t))) {
+    t.queued = false;
+    t.status = "error";
+    t.error = "已取消导出";
+    refreshCard(t);
+    saveTasks();
+    return;
+  }
   try {
     const out = await invoke("run_export", {
       taskId: t.id,
@@ -203,6 +313,8 @@ async function handleDeepLink(url) {
   } catch (e) {
     t.status = "error";
     t.error = typeof e === "string" ? e : e && e.message ? e.message : "导出失败";
+  } finally {
+    release();
   }
   refreshCard(t);
   saveTasks();
@@ -213,11 +325,30 @@ const overlay = document.getElementById("settings");
 const dirEl = document.getElementById("dir");
 const chunkEl = document.getElementById("chunk");
 const memhint = document.getElementById("memhint");
+const originsEl = document.getElementById("origins");
+
+function renderOrigins() {
+  originsEl.innerHTML = trusted.length
+    ? trusted
+        .map((o, i) =>
+          `<div class="origin"><span class="o" title="${esc(o)}">${esc(o)}</span>` +
+          `<button class="btn ghost icon" data-rm="${i}" title="移除"><svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>`)
+        .join("")
+    : `<div class="hint">暂无。首次从新来源导出时会询问是否信任。</div>`;
+}
+originsEl.onclick = (e) => {
+  const b = e.target.closest("[data-rm]");
+  if (!b) return;
+  trusted.splice(+b.dataset.rm, 1);
+  saveTrusted();
+  renderOrigins();
+};
 
 function openSettings() {
   dirEl.value = settings.dir;
   chunkEl.value = settings.chunk;
   memhint.textContent = "预估峰值内存 " + estMem(settings.chunk);
+  renderOrigins();
   overlay.classList.add("show");
 }
 function closeSettings() {
@@ -263,6 +394,7 @@ async function init() {
   }
   settings.dir = dir || "";
   settings.chunk = (await store.get("orders_per_file")) || 70000;
+  trusted = (await store.get("trusted_origins")) || [];
 
   // 恢复历史任务（running 视为中断）
   const saved = (await store.get("tasks")) || [];

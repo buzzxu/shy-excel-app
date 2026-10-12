@@ -14,6 +14,10 @@ use rust_xlsxwriter::{Format, FormatAlign, FormatBorder, Workbook, Worksheet, Xl
 use std::io::Read;
 use std::path::PathBuf;
 
+/// 单文件行数软上限：Excel 单表上限 1,048,576 行；写到此行数后在下一个顶层组边界换文件
+/// （与 `orders_per_file` 先到先换）。单元测试取小值以便覆盖。
+const ROW_SOFT_LIMIT: u32 = if cfg!(test) { 20 } else { 1_000_000 };
+
 /// 生成配置。
 pub struct GenConfig {
     /// 输出目录。
@@ -274,8 +278,10 @@ impl<'a> Generator<'a> {
             (0..self.num_levels).find(|&l| g[l] != self.prev_g[l]).unwrap_or(self.num_levels)
         };
 
-        // 2) 顶层边界 + 文件满 → 轮转（先关闭挂起组、save、新文件）
-        if self.have_prev && chg == 0 && self.orders_in_file >= self.cfg.orders_per_file {
+        // 2) 顶层边界 + 文件满（单数到 orders_per_file 或行数到软上限）→ 轮转（先关闭挂起组、save、新文件）
+        // ponytail: 只在顶层组边界换文件，单个顶层组超过约 4.8 万行（1,048,576 − 1,000,000）仍可能溢出；
+        // 升级路径是整组缓冲后按真实行数判断。
+        if self.have_prev && chg == 0 && (self.orders_in_file >= self.cfg.orders_per_file || self.next_row >= ROW_SOFT_LIMIT) {
             self.rotate_file()?;
         }
 
@@ -376,5 +382,47 @@ fn cell(strs: &[&StringArray], k: usize, r: usize) -> String {
         String::new()
     } else {
         strs[k].value(r).to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use arrow::array::ArrayRef;
+    use arrow::datatypes::{DataType, Field, Schema};
+    use arrow::ipc::writer::StreamWriter;
+    use arrow::record_batch::RecordBatch;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    /// 行数软上限兜底：每文件单数远未满，行数到 ROW_SOFT_LIMIT（测试下 20）也会换文件。
+    #[test]
+    fn rotates_on_row_soft_limit() {
+        let md = |p: &[(&str, &str)]| p.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect::<HashMap<_, _>>();
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("__gid0", DataType::Int64, true).with_metadata(md(&[("role", "gid"), ("level", "0")])),
+            Field::new("c0", DataType::Utf8, true).with_metadata(md(&[("role", "col"), ("title", "名称"), ("level", "0")])),
+        ]));
+        // 30 单 × 1 行
+        let cols: Vec<ArrayRef> = vec![
+            Arc::new(Int64Array::from_iter_values(0..30)),
+            Arc::new(StringArray::from_iter_values((0..30).map(|i| format!("r{i}")))),
+        ];
+        let batch = RecordBatch::try_new(schema.clone(), cols).unwrap();
+        let mut buf = Vec::new();
+        {
+            let mut w = StreamWriter::try_new(&mut buf, &schema).unwrap();
+            w.write(&batch).unwrap();
+            w.finish().unwrap();
+        }
+
+        let dir = std::env::temp_dir().join(format!("xlsxcore_rowlimit_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let cfg = GenConfig { out_dir: dir.clone(), base_name: "r".into(), orders_per_file: 1000 };
+        let res = generate_from_arrow(std::io::Cursor::new(buf), &cfg).unwrap();
+        std::fs::remove_dir_all(&dir).ok();
+
+        assert_eq!(res.orders, 30);
+        assert_eq!(res.files.len(), 2, "表头 1 行 + 软上限 20 → 19 单 + 11 单两个文件");
     }
 }
