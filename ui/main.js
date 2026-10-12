@@ -287,9 +287,11 @@ async function handleDeepLink(url) {
     if (job && tasks.some((t) => t.job === job && t.status === "running")) return;
   }
   // 主题只在来源受信任后生效；走到这里的每条深链都决定窗口主题（不带或无效 theme 即恢复默认）
-  const th = parseTheme(theme);
-  applyTheme(th);
-  if (store) store.set("theme", th);
+  try {
+    const th = parseTheme(theme);
+    applyTheme(th);
+    if (store) store.set("theme", th).catch(() => {});
+  } catch (_) {} // 换肤失败不影响本次导出
   const t = createTask(job);
   if (!(await acquire(t))) {
     t.queued = false;
@@ -390,8 +392,9 @@ document.getElementById("clearDone").onclick = () => {
 // ---------- 初始化 ----------
 async function init() {
   store = await load("settings.json", { autoSave: true });
-  // 恢复上次导出的窗口主题；store 文件可被手改，读回后重新校验
-  applyTheme(sanitizeTheme(await store.get("theme")));
+  // 恢复上次导出的窗口主题；store 文件可被手改，读回后重新校验。
+  // 主题只是换肤：出错保持默认外观，不能拦住后面的深链监听
+  try { applyTheme(sanitizeTheme(await store.get("theme"))); } catch (_) {}
 
   // 下载目录：无配置则取系统默认下载目录
   let dir = await store.get("download_dir");
