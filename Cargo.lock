@@ -3772,7 +3772,7 @@ checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
 name = "shy-export-app"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "dunce",
  "serde",
@@ -3789,7 +3789,7 @@ dependencies = [
 
 [[package]]
 name = "shy-export-cli"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "arrow",
  "serde_json",
@@ -3799,7 +3799,7 @@ dependencies = [
 
 [[package]]
 name = "shy-xlsx-core"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "arrow",
  "rust_xlsxwriter",
