@@ -214,6 +214,7 @@ function release() {
 
 function parseDeepLink(url) {
   // shyexport://export?job=..&token=..&url=完整流地址（含鉴权参数，仅内部使用，绝不展示）
+  // 可选 &theme=主题 JSON：只交给 parseTheme 校验，不渲染
   const q = new URLSearchParams(url.split("?")[1] || "");
   const job = q.get("job");
   let streamUrl = q.get("url");
@@ -222,11 +223,11 @@ function parseDeepLink(url) {
     const token = q.get("token");
     streamUrl = `${host}/shy/export/stream?job=${encodeURIComponent(job)}&token=${encodeURIComponent(token)}`;
   }
-  return { job, streamUrl };
+  return { job, streamUrl, theme: q.get("theme") };
 }
 
 async function handleDeepLink(url) {
-  const { job, streamUrl } = parseDeepLink(url);
+  const { job, streamUrl, theme } = parseDeepLink(url);
   if (!streamUrl) return;
   // 去重：同一 job 正在进行中则忽略（防同条深链既被缓冲又被事件重复投递 / 用户重复点击）
   if (job && tasks.some((t) => t.job === job && t.status === "running")) return;
@@ -285,6 +286,10 @@ async function handleDeepLink(url) {
     // 等待确认期间同一 job 可能已由另一条深链启动
     if (job && tasks.some((t) => t.job === job && t.status === "running")) return;
   }
+  // 主题只在来源受信任后生效；走到这里的每条深链都决定窗口主题（不带或无效 theme 即恢复默认）
+  const th = parseTheme(theme);
+  applyTheme(th);
+  if (store) store.set("theme", th);
   const t = createTask(job);
   if (!(await acquire(t))) {
     t.queued = false;
@@ -385,6 +390,8 @@ document.getElementById("clearDone").onclick = () => {
 // ---------- 初始化 ----------
 async function init() {
   store = await load("settings.json", { autoSave: true });
+  // 恢复上次导出的窗口主题；store 文件可被手改，读回后重新校验
+  applyTheme(sanitizeTheme(await store.get("theme")));
 
   // 下载目录：无配置则取系统默认下载目录
   let dir = await store.get("download_dir");
