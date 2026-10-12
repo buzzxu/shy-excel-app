@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 
 const ctx = vm.createContext({});
 vm.runInContext(readFileSync(new URL("../ui/theme.js", import.meta.url), "utf8"), ctx);
-const { parseTheme, sanitizeTheme, onPrimary, mixWhite } = ctx;
+const { parseTheme, sanitizeTheme, onPrimary, mixWhite, mixBlack, inkOnWhite, contrastWhite } = ctx;
 
 // vm 里创建的对象原型属于另一个 realm，deepEqual 会比原型；复制到本 realm 再比
 const own = (r) => (r ? { ...r } : r);
@@ -69,5 +69,14 @@ assert.equal(mixWhite("#f5a623", 0.75), "#f8bc5a");
 assert.equal(onPrimary("#f5a623"), "#fff");
 assert.equal(onPrimary(mixWhite("#f5a623", 0.75)), "#1f2329");
 assert.equal(onPrimary(mixWhite("#2d8cf0", 0.75)), "#fff");
+
+// 主色当文字用：对白 ≥ 3:1 原样返回；不足则压暗到 ≥ 4.5:1
+assert.equal(mixBlack("#ffffff", 0.5), "#808080"); // 127.5 → 128
+assert.equal(inkOnWhite("#2d8cf0"), "#2d8cf0");
+assert.equal(inkOnWhite("#f5222d"), "#f5222d");
+for (const c of ["#fadb14", "#f5a623", "#13c2c2", "#ffffff"]) {
+  const ink = inkOnWhite(c);
+  assert.ok(contrastWhite(c) < 3 && contrastWhite(ink) >= 4.5, c + " → " + ink);
+}
 
 console.log("check-theme: ok");

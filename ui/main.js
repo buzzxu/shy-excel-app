@@ -92,7 +92,11 @@ function cardInner(t) {
     );
   }
   // error
-  return head(`<span class="badge err">失败</span>`) + `<div class="errbox">${esc(t.error || "导出失败")}</div>`;
+  return (
+    head(`<span class="badge err">失败</span>`) +
+    `<div class="errbox"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5v.01"/></svg>` +
+    `<span>${esc(t.error || "导出失败")}</span></div>`
+  );
 }
 
 function runMeta(t) {

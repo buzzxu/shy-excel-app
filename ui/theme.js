@@ -23,15 +23,38 @@ function sanitizeTheme(o) {
   return Object.keys(th).length ? th : null;
 }
 
-// 主色上的文字色。hex 为已规范化的 #rrggbb；按 WCAG 相对亮度算与白字的对比度
-function onPrimary(hex) {
+// hex（#rrggbb）与白色的 WCAG 对比度
+function contrastWhite(hex) {
   const lin = (i) => {
     const c = parseInt(hex.slice(i, i + 2), 16) / 255;
     return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
   };
-  const L = 0.2126 * lin(1) + 0.7152 * lin(3) + 0.0722 * lin(5);
+  return 1.05 / (0.2126 * lin(1) + 0.7152 * lin(3) + 0.0722 * lin(5) + 0.05);
+}
+
+// 主色上的文字色。hex 为已规范化的 #rrggbb
+function onPrimary(hex) {
   // 阈值取 2:1：主流设计体系即便只有约 2.8:1 也在主色按钮上用白字（如 Element #409eff），只有很浅的主色（如黄色）才改深色字
-  return 1.05 / (L + 0.05) < 2 ? "#1f2329" : "#fff";
+  return contrastWhite(hex) < 2 ? "#1f2329" : "#fff";
+}
+
+// 主色当文字用（浅色模式白底上的「进行中」「打开」等）：对白 ≥ 3:1 原样用；不足则逐步压暗到 ≥ 4.5:1，尽量保留色相
+function inkOnWhite(hex) {
+  if (contrastWhite(hex) >= 3) return hex;
+  for (let p = 0.95; p > 0; p -= 0.05) {
+    const c = mixBlack(hex, p);
+    if (contrastWhite(c) >= 4.5) return c;
+  }
+  return "#000000";
+}
+
+// = CSS color-mix(in srgb, hex p, #000)
+function mixBlack(hex, p) {
+  let out = "#";
+  for (let i = 1; i < 7; i += 2) {
+    out += Math.round(parseInt(hex.slice(i, i + 2), 16) * p).toString(16).padStart(2, "0");
+  }
+  return out;
 }
 
 // = CSS color-mix(in srgb, hex p, #fff)：逐通道在 sRGB 值上线性插值。hex 为 #rrggbb，p 为 0~1
@@ -54,10 +77,12 @@ function applyTheme(th) {
     // 内联样式优先级高于样式表，所以两套文字色都写成变量，由样式表按配色方案选用
     root.style.setProperty("--on-primary-light", onPrimary(p));
     root.style.setProperty("--on-primary-dark", onPrimary(mixWhite(p, 0.75)));
+    root.style.setProperty("--ink-light", inkOnWhite(p));
   } else {
     root.style.removeProperty("--theme-primary");
     root.style.removeProperty("--on-primary-light");
     root.style.removeProperty("--on-primary-dark");
+    root.style.removeProperty("--ink-light");
   }
   root.classList.toggle("flat", !!(th && th.flat));
   if (th && th.radius != null) root.style.setProperty("--radius", th.radius + "px");
